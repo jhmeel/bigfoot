@@ -1,4 +1,4 @@
-# Bigfoot 1.2.1 — Technical report
+# Bigfoot 1.3.0 — Technical report
 
 Scope: the move to an on-device AI (Qwen3-VL) as the default model, the tool tray, Draw and Math,
 continuous voice (Talk), the plugin validator, onboarding and settings changes, and the installer.
@@ -41,7 +41,6 @@ Pinned files, each verified by SHA-256 before it is used (`src/main/local/catalo
 
 | Model | Weights (Q4_K_M) | Vision projector (Q8_0) | Total with runtime |
 |---|---|---|---|
-| Qwen3-VL 2B | 1,107,409,952 B | 445,053,216 B | ~1.5 GB |
 | Qwen3-VL 4B | 2,497,281,664 B | 453,974,304 B | ~2.8 GB |
 | Qwen3-VL 8B | 5,027,784,800 B | 752,289,728 B | ~5.4 GB |
 | Qwen3-VL 30B-A3B | 18,556,687,168 B | 712,148,928 B | ~18 GB |
@@ -59,11 +58,15 @@ resuming depends on. The runtime archive's hash was verified against the publish
 `recommend()` uses dedicated VRAM (registry `HardwareInformation.qwMemorySize`, or `nvidia-smi`), RAM,
 and free disk. Integrated GPUs (under 2 GB reported) count as no GPU.
 
-- Pick: 30B at ≥ 20 GB VRAM, 8B at ≥ 7 GB, 4B at ≥ 4 GB or ≥ 15 GB RAM, otherwise 2B.
+- Pick: 30B at ≥ 20 GB VRAM, 8B at ≥ 7 GB, otherwise 4B, which is the minimum. Qwen3-VL 2B was
+  retired in 1.3.0: on the test laptop it regularly answered "I'll open Chrome and search…" instead of
+  calling the tool, even with the prompt and the agent's corrective nudge. On start, an installed 2B
+  (listed in `catalog.RETIRED`) is deleted, the setting is cleared, the recommended model starts
+  downloading, and Settings › Models opens on its progress banner.
 - A size is **unavailable** when VRAM + (RAM − 3.5 GB) can't hold it ("Requires more memory") or the
   disk can't; **tight** when it only fits by leaving Windows too little ("may be slow").
-- Examples (unit-tested): RTX 4060 + 16 GB → 8B, 30B unavailable; 8 GB laptop without GPU → 2B,
-  4B tight, 8B/30B unavailable.
+- Examples (unit-tested): RTX 4060 + 16 GB → 8B, 30B unavailable; 8 GB laptop without GPU → 4B,
+  8B/30B unavailable.
 
 ### 3.3 Download manager (`local/manager.js`, `local/download.js`)
 
@@ -94,7 +97,7 @@ memory, damaged model files, port in use).
 
 The first installed build never answered on the test laptop (i5-8350U, Intel UHD 620, 8 GB): its
 logs showed the model starting and a question left unanswered for two minutes. Measured on that
-machine with the installed Qwen3-VL 2B:
+machine with Qwen3-VL 2B (since retired; 4B reads prompts at roughly half the speed on CPU):
 
 | Configuration | Prompt reading | Result |
 |---|---|---|
@@ -184,7 +187,24 @@ mapped to the real home folder.
   clean labelled ellipse. For requests like "draw a bird", `edit_drawing` has a `picture` shape
   backed by a library of 23 line drawings (`plugins/lib/pictures.js`, unit-square strokes fitted
   into the requested box, or the middle of the screen). Small models can't trace a recognizable
-  picture point by point, so they name the subject instead.
+  picture point by point, so they name the subject instead. Subjects not in that library are
+  looked up in Tabler Icons 3.48 (MIT, 5,166 outline icons, packed by `scripts/build-icons.js` into
+  a 1.5 MB `plugins/lib/icons.json` of path data plus tags, ranked exact name → all words in the
+  name → tags). The `svg` shape takes markup the model writes (path, line, polyline, polygon,
+  circle, ellipse, rect, and g, with stroke, fill, and stroke-width; scripts, images, and `use` are
+  refused). `plugins/lib/vector.js` samples every segment with `svg-path-properties` (ISC) into
+  points about 2.5 px apart on screen, fits the viewBox into the target box, and sends all strokes in
+  one message, so a whole picture is one undo step. These strokes are drawn with straight segments
+  (`sharp`), optional fill, and an exact pixel width.
+- **Tidy** (`recognize()` in `overlay-ink.js`): a nearly straight open stroke becomes a line; a
+  closed stroke that simplifies (Ramer–Douglas–Peucker at 8% of its size, collinear vertices dropped)
+  to 3 or 4 sides becomes that polygon, or an exact rectangle when the sides are level; otherwise one
+  whose mean radial error to its bounding ellipse is small becomes an ellipse (a circle when the
+  sides are within 15%). A stroke that passes near all four bounding-box corners is a rectangle, not
+  an ellipse. On 4,200 synthetic hand-drawn strokes it classified every circle, ellipse, rectangle,
+  square, triangle, diamond, and line correctly, and left every S-curve, U, star, and heart alone.
+  It runs on release when Tidy is on, after a 550 ms hold otherwise, and on the AI's `tidy` action
+  (optionally in a region). Verified live with real mouse events on the overlay.
 - **Math** (`overlay-math.js`, `mathink.js`, `math.js`): strokes are grouped into expressions by
   proximity and read 0.2 s after the pen lifts by Windows' handwriting recognizer (WinRT
   `InkRecognizerContainer`, called from the native helper on its own MTA thread; 27–177 ms). The best
@@ -251,7 +271,7 @@ runs Bigfoot when done. Additions in this release:
 
 ## 9. Verification
 
-`npm test`: 48 tests across five suites, all passing.
+`npm test`: 52 tests across five suites, all passing.
 
 | Suite | Covers |
 |---|---|
@@ -275,7 +295,8 @@ around them is verified with scripted tool calls), and a full install/uninstall 
 
 | Hardware | Model | Chat answer | Step with a screenshot |
 |---|---|---|---|
-| Laptop without GPU (i5-8350U, 8 GB) — measured | 2B | ~8 s (first words ~2 s) | ~26 s |
+| Laptop without GPU (i5-8350U, 8 GB) — measured with 2B | 2B (retired) | ~8 s (first words ~2 s) | ~26 s |
+| Same laptop — estimate | 4B | ~12–16 s (first words ~3–4 s) | ~45–55 s |
 | RTX 4060 8 GB — estimate | 8B | ~1–2 s | ~1–3 s |
 | RTX 4090 — estimate | 8B | under 1 s | ~1 s |
 | Claude (cloud) — estimate | — | ~2 s | ~2–6 s |
@@ -301,7 +322,7 @@ Bigfoot's own coordinate mapping adds no error (unit-tested).
 
 ## 12. Recommended next steps
 
-1. Measure pointing error by target size with the 2B and 8B models, and add zoom-to-refine for small
+1. Measure pointing error by target size with the 4B and 8B models, and add zoom-to-refine for small
    targets.
 2. A single-request fast path for "where is X" questions.
 3. A multilingual Whisper model as an option.
