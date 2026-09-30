@@ -103,7 +103,7 @@ async function snapPages({ windows, logger }) {
   const fs = require('fs');
   const os = require('os');
   const path = require('path');
-  const pages = ['onboarding', 'home', 'assistant', 'account', 'voice', 'listening', 'safety', 'general', 'terminal'];
+  const pages = ['onboarding', 'home', 'assistant', 'account', 'voice', 'general', 'terminal'];
   const outDir = path.join(os.tmpdir(), 'bigfoot-snaps');
   fs.mkdirSync(outDir, { recursive: true });
   for (const page of pages) {

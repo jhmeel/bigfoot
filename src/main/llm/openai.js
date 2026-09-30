@@ -15,6 +15,7 @@ class OpenAIProvider {
     this.apiKey = apiKey;
     this.model = model;
     this.keepImages = KEEP_IMAGES;
+    this.timeoutMs = 180000;
     this.messages = [{ role: 'system', content: system }];
     this.tools = [computer, ...tools.map((t) => ({ name: t.name, description: t.description, parameters: t.input_schema }))]
       .map((f) => ({ type: 'function', function: { ...f, parameters: portableSchema(f.parameters) } }));
@@ -64,7 +65,7 @@ class OpenAIProvider {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: this.model, messages: this.messages, tools: this.tools, tool_choice: 'auto', ...this.requestExtras() }),
-    }, this.label, signal);
+    }, this.label, signal, this.timeoutMs);
   }
 
   async step(signal) {
@@ -121,7 +122,7 @@ async function testKey(apiKey) {
   await listModels(apiKey);
 }
 
-async function ask({ url = API, key, model, label = 'OpenAI', prompt, image, maxTokens = 300, signal, extras = {} }) {
+async function ask({ url = API, key, model, label = 'OpenAI', prompt, image, maxTokens = 300, signal, extras = {}, timeoutMs }) {
   const body = await requestJson(`${url}/chat/completions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
@@ -131,7 +132,7 @@ async function ask({ url = API, key, model, label = 'OpenAI', prompt, image, max
       max_completion_tokens: maxTokens,
       ...extras,
     }),
-  }, label, signal);
+  }, label, signal, timeoutMs);
   const msg = body.choices && body.choices[0] && body.choices[0].message;
   return String((msg && msg.content) || '').trim();
 }

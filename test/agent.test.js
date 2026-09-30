@@ -35,7 +35,7 @@ class ScriptedProvider {
 function setup({ turns, approvalMode = 'risky', approve = true, onAction } = {}) {
   const values = {
     provider: 'anthropic', model: 'scripted', assistantName: 'Bigfoot', effort: 'high',
-    approvalMode, maxTurns: 20, maxCostPerTask: 0, blockedWindowKeywords: 'password',
+    approvalMode, maxTurns: 20, blockedWindowKeywords: 'password',
   };
   const settings = { get: (k) => values[k], secret: (k) => (k === 'anthropicKey' ? 'sk-ant-test' : '') };
   const provider = new ScriptedProvider(turns);

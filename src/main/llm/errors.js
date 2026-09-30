@@ -8,11 +8,12 @@ class ProviderError extends Error {
   }
 }
 
-/** Shared HTTP handling for the REST-based providers. */
-async function requestJson(url, options, provider, signal) {
+/** Shared HTTP handling for the REST-based providers. The local model on a slow PC needs a long timeoutMs. */
+async function requestJson(url, options, provider, signal, timeoutMs = signal ? 180000 : 30000) {
   let res;
   try {
-    res = await fetch(url, { ...options, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(180000)]) : AbortSignal.timeout(30000) });
+    const timeout = AbortSignal.timeout(timeoutMs);
+    res = await fetch(url, { ...options, signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
   } catch (err) {
     if (signal && signal.aborted) throw err;
     throw new ProviderError(`Couldn’t reach ${provider}. Check your internet connection.`, 'You’re offline');

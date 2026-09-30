@@ -54,6 +54,15 @@ const RUNTIMES = {
   arm64: { name: `llama-${RUNTIME_TAG}-bin-win-cpu-arm64.zip`, size: 12052486, sha256: '431bcdc65d588256eb47d9de5bd00db07bede5b1f2c4680969317bf32474bf11' },
 };
 
+// Offline speech recognition, bundled with the installer (scripts/fetch-speech.js): whisper.cpp with
+// the English base model. On an 8 GB laptop without a graphics card it transcribed a test sentence
+// word-perfectly in ~1.9 s with the model loaded, where the Windows recognizer got half the words wrong.
+const WHISPER_TAG = 'b5130';
+const SPEECH = [
+  { name: 'whisper-bin-x64.zip', size: 8573270, sha256: 'f9ec6c52a2e949b62ab51fa21d0d497958f9e41c3010c157c4e42932d5316f3c', url: `https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_TAG}/whisper-bin-x64.zip`, speechRuntime: true },
+  { ...hf('ggerganov/whisper.cpp', '5359861c739e955e79d9a303bcbc70fb988958b1', 'ggml-base.en-q8_0.bin', 81781811, 'a4d4a0768075e13cfd7e19df3ae2dbc4a68d37d36a7dad45e8410c9a34f8c87e'), speech: true },
+];
+
 function runtimeFor(arch = process.arch) {
   const r = RUNTIMES[arch === 'arm64' ? 'arm64' : 'x64'];
   return { ...r, url: `${GH}/${r.name}`, tag: RUNTIME_TAG, runtime: true };
@@ -107,4 +116,4 @@ function recommend(hw) {
   return { pick, options };
 }
 
-module.exports = { MODELS, RUNTIME_TAG, runtimeFor, modelById, filesFor, downloadBytes, recommend, GB };
+module.exports = { MODELS, RUNTIME_TAG, WHISPER_TAG, SPEECH, runtimeFor, modelById, filesFor, downloadBytes, recommend, GB };

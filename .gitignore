@@ -2,5 +2,7 @@ node_modules/
 dist/
 *.log
 build-log.txt
+# speech recognizer bundled at build time by `npm run fetch:speech` (runs before start and dist)
+vendor/
 # compiled from InputHelper.cs by `npm run build:native` (runs before start and dist)
 src/main/native/*.exe

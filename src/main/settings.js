@@ -31,7 +31,6 @@ const DEFAULTS = {
   effort: 'high',
   screenDetail: 'high',           // high = 1920 px screenshots for Claude, standard = 1366 px (cheaper)
   approvalMode: 'risky',          // risky | every | auto
-  maxCostPerTask: 2,              // USD, 0 = no limit
   maxTurns: 60,
   blockedWindowKeywords: 'password, 1password, bitwarden, lastpass, keepass, bank, paypal, wallet, credential',
 
@@ -49,6 +48,7 @@ const DEFAULTS = {
   toolTray: true,                 // double-click empty desktop space for the tool tray
   launchAtLogin: false,
   onboarded: false,
+  onboardedVersion: 0,            // which setup flow was completed (2 = with the on-device model step)
 };
 
 class Settings {

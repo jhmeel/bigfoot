@@ -145,8 +145,17 @@ class InputHelper extends EventEmitter {
   wake(names) { return this.send('wake', Buffer.from(names.join(','), 'utf8').toString('base64')); }
   wakeOff() { return this.send('wake-off'); }
   watchDesktopDoubleClick(on) { return this.send('dblclick', on ? '1' : '0'); }
-  async transcribeWav(file) {
-    return Buffer.from(await this.send('transcribe', Buffer.from(file, 'utf8').toString('base64')), 'base64').toString('utf8').trim();
+
+  /**
+   * Windows handwriting recognition. strokes: [[{x, y}, ...], ...].
+   * Resolves to segments in writing order, each a list of candidate readings, best first.
+   */
+  async recognizeInk(strokes) {
+    const payload = strokes
+      .map((s) => s.map((p) => `${Math.round(p.x * 10) / 10},${Math.round(p.y * 10) / 10}`).join(' '))
+      .join(';');
+    const text = Buffer.from(await this.send('ink', Buffer.from(payload, 'utf8').toString('base64')), 'base64').toString('utf8');
+    return text ? text.split('\u001e').map((seg) => seg.split('\u001f').filter(Boolean)) : [];
   }
 
   async windowTitle() {

@@ -2,23 +2,22 @@
 // Coordinates everything the user experiences: voice input, tasks, replies, selection, errors.
 
 const { screen, app, Notification } = require('electron');
-const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const { ScreenTarget } = require('./capture');
 const { AgentError, toUserError } = require('./agent');
 const { resolveProvider } = require('./llm');
-const { readInk } = require('./mathink');
+const { readInk, interpretInk } = require('./mathink');
 const voice = require('./voice');
 
 const PTT_DELAY_MS = 150;      // ignore quick Ctrl+Alt shortcuts; only a hold starts listening
 const MIN_RECORDING_MS = 350;
-const STOP_TALKING = /^\W*(?:(?:ok(?:ay)?|hey|thanks?)\W+)?(?:stop listening|stop talking|stop voice|that'?s all|that is all|good ?bye|bye)\W*$/i;
+const ONBOARDING_VERSION = 2; // 2 added the on-device model step
+const STOP_TALKING =/^\W*(?:(?:ok(?:ay)?|hey|thanks?)\W+)?(?:stop listening|stop talking|stop voice|that'?s all|that is all|good ?bye|bye)\W*$/i;
 const STATE_LABELS ={ idle: 'Ready', listening: 'Listening…', processing: 'Thinking…', acting: 'Working…', responding: 'Talking…' };
 
 class Controller {
-  constructor({ windows, settings, agent, audio, input, costs, activity, logger, local, runtime, isOnline = () => true }) {
-    Object.assign(this, { windows, settings, agent, audio, input, costs, activity, logger, local, runtime, isOnline });
+  constructor({ windows, settings, agent, audio, input, costs, activity, logger, local, runtime, speech, isOnline = () => true }) {
+    Object.assign(this, { windows, settings, agent, audio, input, costs, activity, logger, local, runtime, speech, isOnline });
     this.state = 'idle';
     this.listenSource = null;   // 'ptt' | 'wake' | 'voice'
     this.voiceMode = false;     // Talk is on: keep listening after every request until it's turned off
@@ -281,7 +280,7 @@ class Controller {
     this.runTask(text, 'voice');
   }
 
-  /** Windows' offline recognizer, or the chosen cloud service while online. */
+  /** Whisper on this PC, or the chosen cloud service while online. */
   async transcribe(wav) {
     const provider = this.settings.get('sttProvider');
     const key = provider === 'local' ? '' : this.settings.secret(provider === 'elevenlabs' ? 'elevenlabsKey' : 'openaiKey');
@@ -289,17 +288,14 @@ class Controller {
       try {
         return await voice.transcribe({ provider, key, audio: wav, mimeType: 'audio/wav' });
       } catch (err) {
-        this.activity.add('error', `${err.message} Using offline recognition instead.`);
+        this.activity.add('error', `${err.message} Using the recognizer on this PC instead.`);
       }
     }
-    const file = path.join(os.tmpdir(), `buddy-${process.pid}-${Date.now()}.wav`);
-    fs.writeFileSync(file, wav);
     try {
-      return await this.input.transcribeWav(file);
+      return await this.speech.transcribe(wav);
     } catch (err) {
-      throw Object.assign(new Error('Windows speech recognition isn’t available. Add the English speech pack in Windows Settings › Time & language › Speech, or type your request.'), { title: 'Voice input unavailable' });
-    } finally {
-      fs.rm(file, { force: true }, () => {});
+      this.logger.error('Speech recognition failed', err.message);
+      throw Object.assign(new Error(`Speech recognition on this PC failed: ${err.message} You can type your request instead.`), { title: 'Voice input unavailable' });
     }
   }
 
@@ -381,7 +377,7 @@ class Controller {
         this.startInk('draw', this.cursorDisplayId());
         return;
       case 'math':
-        if (this.requireKey()) this.startInk('math', this.cursorDisplayId());
+        this.startInk('math', this.cursorDisplayId()); // sums are read by Windows; only equations need the model
         return;
       case 'type':
         this.windows.openMain('home');
@@ -478,6 +474,19 @@ class Controller {
     this.windows.setOverlayPassthrough(displayId, on);
   }
 
+  /** Live reading of the math tool's handwriting with the Windows recognizer. */
+  async readMathInk(strokes) {
+    const clean = (Array.isArray(strokes) ? strokes : []).slice(0, 300).map((s) => (Array.isArray(s) ? s : [])
+      .slice(0, 2000).filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y))).filter((s) => s.length);
+    if (!clean.length) return { ok: true, text: '', status: 'unknown' };
+    try {
+      return { ok: true, ...interpretInk(await this.input.recognizeInk(clean)) };
+    } catch (err) {
+      this.logger.error('Handwriting recognition failed', err.message);
+      return { ok: false, message: `Handwriting recognition isn’t available: ${err.message}` };
+    }
+  }
+
   async readMath(png) {
     try {
       const r = await readInk({ png: Buffer.from(png), settings: this.settings, runtime: this.runtime, online: this.isOnline() });
@@ -503,7 +512,6 @@ class Controller {
     if (this.agent.running) { this.showInfo('Still working', 'Press Esc to stop the current task first.'); return { ok: false }; }
     if (!this.requireKey()) { this.setState('idle'); return { ok: false }; }
     if (this.state === 'responding') this.finishReply();
-    if (source === 'typed') this.windows.hidePanel(); // get out of the way of the screen
 
     const region = this.pendingRegion;
     this.pendingRegion = null;
@@ -528,6 +536,7 @@ class Controller {
     }
 
     this.streamed = '';
+    this.audio.beginStream();
     this.panelLog('user', text);
     this.logger.audit('task', { source, chars: text.length, region: Boolean(region) });
     this.setState('processing');
@@ -558,6 +567,8 @@ class Controller {
     const clean = String(text || '').replace(/\[POINT[^\]]*\]?/gi, '').replace(/\s{2,}/g, ' ').trim();
     if (!clean) return;
     this.streamed = clean;
+    this.audio.feedStream(clean); // speak each sentence as soon as it's complete
+    this.windows.send(this.windows.panel, 'log-live', { text: clean });
     this.windows.broadcast('bubble-live', { text: clean, displayId: this.agent.target ? this.agent.target.display.id : null });
   }
 
@@ -585,7 +596,7 @@ class Controller {
     else this.windows.broadcast('bubble', { text: reply, ttl: 0, displayId });
     this.streamed = '';
 
-    const used = await this.audio.speak(reply);
+    const used = await this.audio.finishStream(reply); // whatever wasn't already spoken while streaming
     if (this.state !== 'responding') return;
     const readingMs = used === 'none' ? Math.min(16000, Math.max(4500, 2000 + reply.length * 45)) : 1400;
     clearTimeout(this.replyTimer);
@@ -604,7 +615,7 @@ class Controller {
   }
 
   finishOnboarding({ launchAtLogin }) {
-    this.settings.update({ onboarded: true, launchAtLogin: launchAtLogin !== false });
+    this.settings.update({ onboarded: true, onboardedVersion: ONBOARDING_VERSION, launchAtLogin: launchAtLogin !== false });
     app.setLoginItemSettings({ openAtLogin: launchAtLogin !== false, args: ['--hidden'] });
     // While the model downloads, land on Models, where the banner shows its progress.
     this.windows.openMain(this.provider() ? 'home' : 'account');
@@ -616,4 +627,4 @@ class Controller {
   }
 }
 
-module.exports = { Controller, STATE_LABELS };
+module.exports = { Controller, STATE_LABELS, ONBOARDING_VERSION };

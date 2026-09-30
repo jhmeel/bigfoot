@@ -12,10 +12,9 @@
 //             !|wake|<confidence>                 (the assistant's name was heard)
 //             !|dblclick|<x>,<y>                  (physical double-click on empty desktop space)
 //
-// Build (csc.exe ships with Windows in C:\Windows\Microsoft.NET\Framework64\v4.0.30319):
-//   csc -nologo -optimize -target:exe -lib:%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\WPF
-//       -r:System.Speech.dll -r:UIAutomationClient.dll -r:UIAutomationTypes.dll -r:WindowsBase.dll
-//       -out:input-helper.exe InputHelper.cs
+//             <id>|ok|<base64>                    (reply to "ink": handwriting candidates)
+//
+// Build with `npm run build:native` (scripts/build-native.js lists the references).
 
 using System;
 using System.Collections.Generic;
@@ -24,6 +23,8 @@ using System.Speech.Recognition;
 using System.Text;
 using System.Threading;
 using System.Windows.Automation;
+using Windows.Foundation;
+using Windows.UI.Input.Inking;
 
 /// <summary>
 /// Reports real double-clicks on empty desktop space. The "empty" check runs off the hook thread
@@ -43,6 +44,8 @@ internal static class DesktopClicks
     delegate IntPtr HookProc(int code, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll", SetLastError = true)] static extern IntPtr SetWindowsHookEx(int id, HookProc proc, IntPtr mod, uint thread);
+    [DllImport("user32.dll")] static extern bool UnhookWindowsHookEx(IntPtr hook);
+    [DllImport("user32.dll")] static extern IntPtr SetTimer(IntPtr hwnd, IntPtr id, uint ms, IntPtr proc);
     [DllImport("user32.dll")] static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] static extern int GetMessage(out MSG msg, IntPtr hwnd, uint min, uint max);
     [DllImport("kernel32.dll")] static extern IntPtr GetModuleHandle(string name);
@@ -65,15 +68,24 @@ internal static class DesktopClicks
 
     public static void SetEnabled(bool on) { enabled = on; }
 
+    const uint WM_TIMER = 0x0113;
+
     public static void Start()
     {
         Thread t = new Thread(() =>
         {
             proc = Hook;
             IntPtr hook = SetWindowsHookEx(WH_MOUSE_LL, proc, GetModuleHandle(null), 0);
-            if (hook == IntPtr.Zero) return;
+            // Windows silently drops a low-level hook that answers too slowly (e.g. while the PC is
+            // under heavy load), so re-attach it regularly; re-hooking is cheap.
+            SetTimer(IntPtr.Zero, IntPtr.Zero, 10000, IntPtr.Zero);
             MSG msg;
-            while (GetMessage(out msg, IntPtr.Zero, 0, 0) > 0) { }
+            while (GetMessage(out msg, IntPtr.Zero, 0, 0) > 0)
+            {
+                if (msg.message != WM_TIMER) continue;
+                if (hook != IntPtr.Zero) UnhookWindowsHookEx(hook);
+                hook = SetWindowsHookEx(WH_MOUSE_LL, proc, GetModuleHandle(null), 0);
+            }
         });
         t.IsBackground = true;
         t.Start();
@@ -114,11 +126,10 @@ internal static class DesktopClicks
 
     static bool IsEmptyDesktop(POINT p)
     {
+        string root = ClassOf(GetAncestor(WindowFromPoint(p), GA_ROOT));
+        if (root != "Progman" && root != "WorkerW") return false;
         try
         {
-            IntPtr hwnd = WindowFromPoint(p);
-            string root = ClassOf(GetAncestor(hwnd, GA_ROOT));
-            if (root != "Progman" && root != "WorkerW") return false;
             AutomationElement el = AutomationElement.FromPoint(new System.Windows.Point(p.X, p.Y));
             TreeWalker walker = TreeWalker.ControlViewWalker;
             for (int depth = 0; el != null && depth < 4; depth++)
@@ -132,14 +143,69 @@ internal static class DesktopClicks
         }
         catch
         {
-            return false;
+            return true; // it is the desktop; UI Automation just couldn't say whether an icon is there
         }
     }
 }
 
+/// <summary>Handwriting recognition with the recognizer built into Windows (offline, milliseconds).</summary>
+internal static class InkReader
+{
+    static InkRecognizerContainer recognizer;
+    static readonly System.Globalization.CultureInfo Inv = System.Globalization.CultureInfo.InvariantCulture;
+
+    /// <summary>
+    /// strokes: "x,y x,y ...;x,y ..." in screen pixels. Returns one line per recognized segment,
+    /// its candidates separated by U+001F, segments separated by U+001E.
+    /// </summary>
+    public static string Recognize(string strokes)
+    {
+        // The command loop runs on an STA thread, where waiting would block the WinRT completion.
+        string result = null;
+        Exception failure = null;
+        Thread worker = new Thread(() =>
+        {
+            try { result = RecognizeOnThisThread(strokes); } catch (Exception ex) { failure = ex; }
+        });
+        worker.SetApartmentState(ApartmentState.MTA);
+        worker.IsBackground = true;
+        worker.Start();
+        if (!worker.Join(TimeSpan.FromSeconds(8))) throw new TimeoutException("handwriting recognition took too long");
+        if (failure != null) throw failure;
+        return result;
+    }
+
+    static string RecognizeOnThisThread(string strokes)
+    {
+        InkStrokeBuilder builder = new InkStrokeBuilder();
+        InkStrokeContainer container = new InkStrokeContainer();
+        foreach (string s in strokes.Split(';'))
+        {
+            List<Point> pts = new List<Point>();
+            foreach (string p in s.Split(' '))
+            {
+                string[] xy = p.Split(',');
+                if (xy.Length == 2) pts.Add(new Point(double.Parse(xy[0], Inv), double.Parse(xy[1], Inv)));
+            }
+            if (pts.Count == 1) pts.Add(new Point(pts[0].X + 0.5, pts[0].Y + 0.5)); // a dot
+            if (pts.Count >= 2) container.AddStroke(builder.CreateStroke(pts));
+        }
+        if (container.GetStrokes().Count == 0) return "";
+        if (recognizer == null) recognizer = new InkRecognizerContainer();
+        IAsyncOperation<IReadOnlyList<InkRecognitionResult>> op = recognizer.RecognizeAsync(container, InkRecognitionTarget.All);
+        DateTime deadline = DateTime.UtcNow.AddSeconds(5);
+        while (op.Status == AsyncStatus.Started && DateTime.UtcNow < deadline) Thread.Sleep(2);
+        if (op.Status != AsyncStatus.Completed) throw new InvalidOperationException("handwriting recognition " + op.Status);
+        List<string> segments = new List<string>();
+        foreach (InkRecognitionResult r in op.GetResults())
+            segments.Add(string.Join("\u001f", r.GetTextCandidates()));
+        return string.Join("\u001e", segments);
+    }
+}
+
 /// <summary>
-/// Offline speech through the Windows recognizer: wake-word spotting and a local transcription
-/// fallback for when no cloud speech-to-text key is configured.
+/// Wake-word spotting with the Windows recognizer (a light keyword grammar). Speech-to-text itself
+/// is done by Whisper in the main process.
 /// </summary>
 internal static class Speech
 {
@@ -197,29 +263,6 @@ internal static class Speech
         try { wake.RecognizeAsyncCancel(); } catch { }
         try { wake.Dispose(); } catch { }
         wake = null;
-    }
-
-    public static string TranscribeWav(string path)
-    {
-        using (SpeechRecognitionEngine engine = new SpeechRecognitionEngine())
-        using (ManualResetEvent done = new ManualResetEvent(false))
-        {
-            engine.LoadGrammar(new DictationGrammar());
-            engine.SetInputToWaveFile(path);
-            StringBuilder text = new StringBuilder();
-            Exception failure = null;
-            engine.SpeechRecognized += (s, e) =>
-            {
-                if (text.Length > 0) text.Append(' ');
-                text.Append(e.Result.Text);
-            };
-            // Completes when the file runs out of audio.
-            engine.RecognizeCompleted += (s, e) => { failure = e.Error; done.Set(); };
-            engine.RecognizeAsync(RecognizeMode.Multiple);
-            if (!done.WaitOne(TimeSpan.FromSeconds(60))) engine.RecognizeAsyncCancel();
-            if (failure != null && text.Length == 0) throw failure;
-            return text.ToString();
-        }
     }
 }
 
@@ -338,7 +381,7 @@ internal static class InputHelper
             case "wake": return Speech.StartWake(TextArg(p, 2));
             case "wake-off": Speech.StopWake(); return null;
             case "dblclick": DesktopClicks.SetEnabled(Arg(p, 2) == "1"); return null;
-            case "transcribe": return Convert.ToBase64String(Encoding.UTF8.GetBytes(Speech.TranscribeWav(TextArg(p, 2))));
+            case "ink": return Convert.ToBase64String(Encoding.UTF8.GetBytes(InkReader.Recognize(TextArg(p, 2))));
             case "title":
                 {
                     IntPtr h = GetForegroundWindow();

@@ -37,17 +37,20 @@ revision and checked against its SHA-256 before it's installed.
 |---|---|
 | Qwen3-VL GGUF models (Apache-2.0) | https://huggingface.co/Qwen |
 | llama.cpp runtime b11276 (MIT) | https://github.com/ggml-org/llama.cpp/releases/tag/b11276 |
+| whisper.cpp b5130 and its English base model (MIT), bundled in the installer | https://github.com/ggml-org/whisper.cpp |
 
 **Cloud models (optional).** Settings › Models can use Claude or OpenAI with your own API key.
 They need an internet connection; whenever you're offline, Bigfoot uses the model on your PC.
 Cloud models are stronger at long, multi-step work in other apps.
 
 **Speed.** The model loads when Bigfoot starts and stays loaded (Settings › Models › Keep the AI
-loaded), so there's no cold start; if it ever crashes it's restarted automatically. Its fixed
-instructions are pre-read once, replies appear word by word as they're written, and screenshots
-are sized to your hardware. What remains depends on your PC: about 1–4 seconds per step with a
-graphics card, several seconds or more on a laptop without one. It points reliably at labelled
-buttons, menus, and links, and less reliably at small unlabelled icons.
+loaded), and it's restarted automatically if it ever crashes. Its fixed instructions are read once
+and saved to disk, so later starts are ready in about a second; replies appear word by word; and
+on PCs without a graphics card it runs on the CPU with smaller screenshots, at lower priority and
+one core short, so Windows stays responsive. Measured on an 8 GB laptop without a graphics card
+(i5-8350U): a chat answer in about 8 seconds, a question about the screen in about 30. With a
+graphics card it's a few seconds per step. It points reliably at labelled buttons, menus, and links,
+and less reliably at small unlabelled icons.
 
 ## Using it
 
@@ -79,22 +82,31 @@ it, and its edits land in your drawing, where Undo works on them.
 Shortcuts: V P H B E L A R O for tools, 1–8 for colors, [ ] for size, Ctrl+Z / Ctrl+Y, Delete to
 clear, Esc to close.
 
-**Math**: write sums anywhere on the screen and each one is answered as you write. The model reads
-the handwriting; the arithmetic is computed exactly by Bigfoot, never guessed.
+**Math**: write math anywhere on the screen. Windows' handwriting recognizer reads it in a fraction
+of a second and shows the clean reading underneath, so a misread is obvious at once. Press **Solve**
+next to an expression (or **Solve all**, or Enter): sums are computed exactly by Bigfoot, a sum with
+your own answer is checked (✓, or the right answer), and equations with a letter, like
+2x + 1 = 7, are solved by the AI model.
+
+The Home window is a chat with Bigfoot. It stays open while you chat and steps aside only when
+Bigfoot starts using the mouse or keyboard.
 
 ## Voice
 
-- **Hearing you:** Windows' speech recognizer on your PC by default (offline). OpenAI or ElevenLabs
-  can be chosen in Settings › Listening; they're used only while online.
-- **Talking back:** Windows voices (offline, free), or OpenAI and ElevenLabs voices with a key. Every
-  reply is also typed out next to the cursor. Turn speech off in Settings › Voice.
+- **Hearing you:** Whisper, running on your PC and bundled with Bigfoot: offline, private, and
+  accurate (about 2–5 seconds per sentence on a laptop without a graphics card). OpenAI or
+  ElevenLabs can be chosen in Settings › Voice; they're used only while online. The "Hey Bigfoot"
+  wake word uses Windows' lightweight keyword spotter.
+- **Talking back:** Windows voices (offline, free), or OpenAI and ElevenLabs voices with a key. Bigfoot
+  starts speaking each sentence as soon as it's written, while the rest of the reply is still coming,
+  and every reply is also typed out next to the cursor. Turn speech off in Settings › Voice.
 
 ## Plugins
 
-Plugins give the AI new tools. In Settings › General › Plugins, **Create from Template** saves a
-documented starter plugin; **Add Plugin…** checks a plugin in a separate process (syntax, tool
-definitions, schemas, name clashes), shows what its code can access, and installs it only when you
-confirm. See [docs/PLUGINS.md](docs/PLUGINS.md).
+Plugins give the AI new tools. In Settings › General › Plugins, **Add Plugin…** opens beside a
+documented, read-only template to copy and edit, then checks your plugin in a separate process
+(syntax, tool definitions, schemas, name clashes), shows what its code can access, and installs it
+only when you confirm. See [docs/PLUGINS.md](docs/PLUGINS.md).
 
 ## Privacy and safety
 
@@ -130,7 +142,7 @@ src/main/             Electron main process
   controller.js       voice and Talk mode, tasks, replies, tool tray, Draw and Math, errors
   agent.js            provider-agnostic agent loop, approvals, offline fallback
   llm/                local Qwen3-VL, Claude, and OpenAI providers
-  local/              model catalog, hardware check, resumable downloads, llama.cpp runtime
+  local/              model catalog, hardware check, resumable downloads, llama.cpp runtime, Whisper
   math.js mathink.js  exact arithmetic and handwriting reading for the math tool
   computer.js         computer actions (click, type, drag, scroll…)
   capture.js          screenshots and coordinate mapping
@@ -143,8 +155,9 @@ docs/                 plugin guide and technical report
 ```
 
 The native helper (`src/main/native/InputHelper.cs`) is compiled with the C# compiler that ships
-with Windows. `npm start` and `npm run dist` build it automatically when it's missing or out of date;
-to rebuild it by hand:
+with Windows. `npm start` and `npm run dist` build it automatically when it's missing or out of date, and fetch
+the bundled speech recognizer into `vendor/speech` (SHA-256 verified; not committed). To rebuild the
+helper by hand:
 
 ```bash
 npm run build:native -- --force

@@ -254,9 +254,9 @@ test('old screenshots are dropped in batches so the cached context survives', ()
 
 test('smaller machines get smaller screenshots, and a kept-loaded model never unloads', () => {
   const { tuningFor, LocalRuntime } = require('../src/main/local/runtime');
-  assert.deepEqual(tuningFor({ dedicated: false, vramGB: 0 }), { imageTokens: 448, edge: 1024 });
-  assert.deepEqual(tuningFor({ dedicated: true, vramGB: 4 }), { imageTokens: 768, edge: 1280 });
-  assert.deepEqual(tuningFor({ dedicated: true, vramGB: 8 }), { imageTokens: 1024, edge: 1280 });
+  assert.deepEqual(tuningFor({ dedicated: false, vramGB: 0, ramGB: 8 }), { imageTokens: 256, edge: 1024, cpuOnly: true, lock: false });
+  assert.deepEqual(tuningFor({ dedicated: true, vramGB: 4, ramGB: 16 }), { imageTokens: 768, edge: 1280, cpuOnly: false, lock: true });
+  assert.deepEqual(tuningFor({ dedicated: true, vramGB: 8, ramGB: 8 }), { imageTokens: 1024, edge: 1280, cpuOnly: false, lock: false });
   const manager = { on() {}, paths: () => null };
   const kept = new LocalRuntime({ manager, settings: { get: () => true } });
   kept.touch();
@@ -265,6 +265,30 @@ test('smaller machines get smaller screenshots, and a kept-loaded model never un
   idle.touch();
   assert.ok(idle.idleTimer);
   clearTimeout(idle.idleTimer);
+});
+
+test('handwriting is read live: answered after "=", checked when the user wrote an answer', () => {
+  const { interpretInk } = require('../src/main/mathink');
+  assert.deepEqual(interpretInk([['1+1', '+1', '1+7'], ['=', '=.', '-']]), { text: '1 + 1 =', status: 'answer', answer: '2', expression: '1+1' });
+  assert.equal(interpretInk([['l2 x 4 =']]).answer, '48'); // "l" is a 1, "x" between numbers is times
+  assert.equal(interpretInk([['12+7=20']]).status, 'wrong');
+  assert.equal(interpretInk([['12+7=20']]).answer, '19');
+  assert.equal(interpretInk([['12+7=19']]).status, 'right');
+  assert.equal(interpretInk([['9÷3']]).status, 'writing'); // no "=" yet: show the reading only
+  assert.equal(interpretInk([['2x+1=7']]).status, 'solve');
+  assert.equal(interpretInk([['hello']]).status, 'unknown');
+});
+
+test('speech: Whisper noise markers are not words', () => {
+  const { cleanTranscript } = require('../src/main/local/speech');
+  assert.equal(cleanTranscript(' [BLANK_AUDIO] '), '');
+  assert.equal(cleanTranscript('Open Notepad. (keyboard clicking) Thanks'), 'Open Notepad. Thanks');
+});
+
+test('apps that are not installed open their web version', () => {
+  const { WEB_APPS } = require('../src/main/plugins/builtin/apps');
+  assert.equal(WEB_APPS.spotify, 'https://open.spotify.com');
+  assert.ok(Object.values(WEB_APPS).every((u) => /^https:\/\//.test(u)));
 });
 
 test('local runs are free', () => {

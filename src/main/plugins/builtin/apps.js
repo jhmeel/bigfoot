@@ -19,13 +19,24 @@ function startApps() {
         if (!Array.isArray(list)) list = [list];
       } catch { /* leave empty; the PATH fallback still works */ }
       list = list.filter((a) => a && a.Name && a.AppID);
-      appsCache = { at: Date.now(), list };
+      if (list.length) appsCache = { at: Date.now(), list }; // never cache a failed lookup
       resolve(list);
     });
   });
 }
 
 const normalize = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+// Apps with a full web version, opened in the browser when the app itself isn't installed.
+const WEB_APPS = {
+  spotify: 'https://open.spotify.com', youtube: 'https://www.youtube.com', 'youtube music': 'https://music.youtube.com',
+  netflix: 'https://www.netflix.com', whatsapp: 'https://web.whatsapp.com', telegram: 'https://web.telegram.org',
+  gmail: 'https://mail.google.com', outlook: 'https://outlook.live.com', 'google docs': 'https://docs.google.com',
+  'google sheets': 'https://sheets.google.com', 'google drive': 'https://drive.google.com', canva: 'https://www.canva.com',
+  figma: 'https://www.figma.com', notion: 'https://www.notion.so', slack: 'https://app.slack.com', discord: 'https://discord.com/app',
+  'microsoft teams': 'https://teams.microsoft.com', teams: 'https://teams.microsoft.com', 'apple music': 'https://music.apple.com',
+  'prime video': 'https://www.primevideo.com', chatgpt: 'https://chatgpt.com', claude: 'https://claude.ai',
+};
 const ALIASES = {
   chrome: 'google chrome', edge: 'microsoft edge', explorer: 'file explorer', files: 'file explorer',
   cmd: 'command prompt', vscode: 'visual studio code', 'vs code': 'visual studio code', paint: 'paint',
@@ -59,6 +70,11 @@ async function openApp(name) {
   }
   // Executables on PATH or registered App Paths, e.g. "notepad", "mspaint".
   if (!(await shell.openPath(name))) return name;
+  const web = WEB_APPS[normalize(name)];
+  if (web) {
+    await shell.openExternal(web);
+    return { web: true, name, url: web };
+  }
   const close = ranked.filter((r) => r.score > 0).slice(0, 5).map((r) => r.app.Name);
   throw new Error(`No installed app matches "${name}".${close.length ? ` Closest: ${close.join(', ')}.` : ''}`);
 }
@@ -77,6 +93,9 @@ module.exports = [
       await ctx.confirm('read', { title: 'Open an app?', message: `Open ${name}`, confirm: 'Open' });
       const opened = await openApp(String(name));
       await ctx.sleep(1200);
+      if (opened && opened.web) {
+        return `${opened.name} isn't installed on this PC, so its web version (${opened.url}) was opened in the browser instead. Tell the user, then take a screenshot to continue there.`;
+      }
       return `Opened ${opened}. Take a screenshot to confirm it's ready.`;
     },
   },
@@ -100,3 +119,4 @@ module.exports = [
 ];
 
 module.exports.scoreApp = scoreApp;
+module.exports.WEB_APPS = WEB_APPS;
