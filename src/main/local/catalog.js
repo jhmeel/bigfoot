@@ -1,0 +1,110 @@
+'use strict';
+// Local AI downloads: official Qwen3-VL GGUFs (Hugging Face, pinned commits) and the llama.cpp
+// runtime (pinned release). Every file is verified against its SHA-256.
+
+const HF = 'https://huggingface.co';
+const RUNTIME_TAG = 'b11276';
+const GH = `https://github.com/ggml-org/llama.cpp/releases/download/${RUNTIME_TAG}`;
+
+const GB = 1024 ** 3;
+
+function hf(repo, rev, name, size, sha256) {
+  return { name, size, sha256, url: `${HF}/${repo}/resolve/${rev}/${name}` };
+}
+
+// memoryGB: needed to run with a full context and a screenshot.
+const MODELS = [
+  {
+    id: 'qwen3-vl-2b', size: '2B', label: 'Qwen3-VL 2B', memoryGB: 2.6,
+    repo: 'Qwen/Qwen3-VL-2B-Instruct-GGUF',
+    files: [
+      hf('Qwen/Qwen3-VL-2B-Instruct-GGUF', '52d6c8ffea26cc873ac5ad116f8631268d7eb503', 'Qwen3VL-2B-Instruct-Q4_K_M.gguf', 1107409952, '089d75c52f4b7ffc56ba998ffc50aae89fcafc755f9e7208aacca281dca6c2ae'),
+      hf('Qwen/Qwen3-VL-2B-Instruct-GGUF', '52d6c8ffea26cc873ac5ad116f8631268d7eb503', 'mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf', 445053216, 'f9a68fabba69c3b81e153367b2c7521030b0fa8bb0de400c9599c8e6725f9c82'),
+    ],
+  },
+  {
+    id: 'qwen3-vl-4b', size: '4B', label: 'Qwen3-VL 4B', memoryGB: 4.2,
+    repo: 'Qwen/Qwen3-VL-4B-Instruct-GGUF',
+    files: [
+      hf('Qwen/Qwen3-VL-4B-Instruct-GGUF', '1cd86afb9a95c410a6038ab3b40d8b578c892266', 'Qwen3VL-4B-Instruct-Q4_K_M.gguf', 2497281664, '66358cb18bb6b3b1b6675aa412c7a88ef01d228f481184d13668e5201c730a0a'),
+      hf('Qwen/Qwen3-VL-4B-Instruct-GGUF', '1cd86afb9a95c410a6038ab3b40d8b578c892266', 'mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf', 453974304, '30ba2c7dd3127a4561b6cba9d13d0f711c91bdb38742e2f56d73c8cb596bd06d'),
+    ],
+  },
+  {
+    id: 'qwen3-vl-8b', size: '8B', label: 'Qwen3-VL 8B', memoryGB: 7.2,
+    repo: 'Qwen/Qwen3-VL-8B-Instruct-GGUF',
+    files: [
+      hf('Qwen/Qwen3-VL-8B-Instruct-GGUF', 'f982a07559d4a2f6c8744d840bf6fccab30eea96', 'Qwen3VL-8B-Instruct-Q4_K_M.gguf', 5027784800, '67d1659bfe71b89d50b45a4ad1a9e5b997e5bb16ce5da66a6a6167abd569e9e2'),
+      hf('Qwen/Qwen3-VL-8B-Instruct-GGUF', 'f982a07559d4a2f6c8744d840bf6fccab30eea96', 'mmproj-Qwen3VL-8B-Instruct-Q8_0.gguf', 752289728, 'c6ba85508d82f42590e6eb77d5340369ab6fecf107a7561d809523d8aa5f3bfd'),
+    ],
+  },
+  {
+    id: 'qwen3-vl-30b', size: '30B', label: 'Qwen3-VL 30B', memoryGB: 21,
+    repo: 'Qwen/Qwen3-VL-30B-A3B-Instruct-GGUF',
+    files: [
+      hf('Qwen/Qwen3-VL-30B-A3B-Instruct-GGUF', 'f54435e6cc31258f04b0969105c3f6badb197931', 'Qwen3VL-30B-A3B-Instruct-Q4_K_M.gguf', 18556687168, '87bb374d849f80ebdfabb304189fac9e0bd35a0f74506e6a59c51b206cbe863b'),
+      hf('Qwen/Qwen3-VL-30B-A3B-Instruct-GGUF', 'f54435e6cc31258f04b0969105c3f6badb197931', 'mmproj-Qwen3VL-30B-A3B-Instruct-Q8_0.gguf', 712148928, '82a9966edfdbc1b18a27fd90af96d50cbf111a51484f6290e946dccf461c8150'),
+    ],
+  },
+];
+
+// The Vulkan build covers NVIDIA, AMD and Intel GPUs and includes CPU backends.
+const RUNTIMES = {
+  x64: { name: `llama-${RUNTIME_TAG}-bin-win-vulkan-x64.zip`, size: 33095885, sha256: '33072ec329923a168dcef9a9e76d8578a9bcedda47dff70410e2de5b1ae112cd' },
+  arm64: { name: `llama-${RUNTIME_TAG}-bin-win-cpu-arm64.zip`, size: 12052486, sha256: '431bcdc65d588256eb47d9de5bd00db07bede5b1f2c4680969317bf32474bf11' },
+};
+
+function runtimeFor(arch = process.arch) {
+  const r = RUNTIMES[arch === 'arm64' ? 'arm64' : 'x64'];
+  return { ...r, url: `${GH}/${r.name}`, tag: RUNTIME_TAG, runtime: true };
+}
+
+function modelById(id) {
+  return MODELS.find((m) => m.id === id) || null;
+}
+
+function filesFor(id, arch) {
+  const m = modelById(id);
+  if (!m) throw new Error(`Unknown local model ${id}`);
+  return [runtimeFor(arch), ...m.files];
+}
+
+function downloadBytes(id, arch) {
+  return filesFor(id, arch).reduce((n, f) => n + f.size, 0);
+}
+
+/** @param {{ ramGB: number, vramGB: number, dedicated: boolean, freeDiskGB?: number }} hw */
+function recommend(hw) {
+  const ram = Number(hw.ramGB) || 0;
+  const vram = hw.dedicated ? Number(hw.vramGB) || 0 : 0;
+  const usableRam = Math.max(0, ram - 3) * 0.8; // Windows and other apps need the rest
+  const onGpu = (m) => vram >= m.memoryGB;
+  const runs = (m) => vram + usableRam >= m.memoryGB; // llama.cpp --fit splits layers between GPU and RAM
+  const loads = (m) => vram + Math.max(0, ram - 3.5) >= m.memoryGB;
+
+  let pick;
+  if (vram >= 20) pick = 'qwen3-vl-30b';
+  else if (vram >= 7) pick = 'qwen3-vl-8b';
+  else if (vram >= 4) pick = 'qwen3-vl-4b';
+  else if (ram >= 15) pick = 'qwen3-vl-4b'; // on CPU, 8B is too slow to feel responsive
+  else pick = 'qwen3-vl-2b';
+  if (!runs(modelById(pick))) pick = MODELS.slice().reverse().find(runs)?.id || 'qwen3-vl-2b';
+
+  const pickIndex = MODELS.findIndex((m) => m.id === pick);
+  const options = MODELS.map((m, i) => {
+    const bytes = downloadBytes(m.id);
+    const diskOk = hw.freeDiskGB == null || hw.freeDiskGB * GB > bytes * 1.05;
+    let note;
+    let fits = loads(m);
+    if (m.id === pick) note = 'Recommended';
+    else if (!fits) note = 'Requires more memory';
+    else if (i < pickIndex) note = 'Faster / lighter';
+    else if (!runs(m)) note = 'Tight on memory · may be slow';
+    else note = onGpu(m) ? 'Higher quality' : 'Higher quality · slower';
+    if (!diskOk) { fits = false; note = 'Not enough disk space'; }
+    return { id: m.id, size: m.size, label: m.label, bytes, recommended: m.id === pick, available: fits, note };
+  });
+  return { pick, options };
+}
+
+module.exports = { MODELS, RUNTIME_TAG, runtimeFor, modelById, filesFor, downloadBytes, recommend, GB };

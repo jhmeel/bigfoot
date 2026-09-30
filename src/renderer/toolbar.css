@@ -1,0 +1,33 @@
+html, body { background: transparent !important; }
+body { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding: 0 0 10px; }
+
+.tray {
+  display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 14px;
+  background: rgba(24, 26, 28, 0.92); border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  backdrop-filter: blur(20px) saturate(160%);
+  opacity: 0; transform: translateY(6px) scale(0.96); transform-origin: 50% 100%;
+  transition: opacity 140ms ease-out, transform 220ms var(--spring);
+}
+.tray.show { opacity: 1; transform: none; }
+.tray.leaving { opacity: 0; transform: scale(0.97); transition-duration: 110ms; }
+
+.tray button {
+  width: 34px; height: 34px; border: 0; border-radius: 10px; background: transparent; color: #c9cfcc;
+  display: flex; align-items: center; justify-content: center; transition: background 120ms, color 120ms, transform 80ms;
+}
+.tray button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.tray button svg .fill { fill: currentColor; stroke: none; }
+.tray button:hover, .tray button:focus-visible { background: rgba(255, 255, 255, 0.09); color: #fff; outline: none; }
+.tray button:active { transform: scale(0.92); }
+.tray button[aria-pressed='true'] { background: rgba(10, 132, 255, 0.24); color: #fff; }
+.tray button[aria-pressed='true'] svg { stroke: #7db2ff; animation: live 1.4s ease-in-out infinite; }
+@keyframes live { 50% { opacity: 0.45; } }
+.tray .sep { width: 1px; height: 18px; margin: 0 3px; background: rgba(255, 255, 255, 0.1); }
+
+.tip {
+  margin-bottom: 6px; padding: 3px 8px; border-radius: 6px; background: rgba(12, 13, 14, 0.94); color: #eceeed;
+  font-size: 11px; font-weight: 550; white-space: nowrap; opacity: 0; transform: translateY(3px);
+  transition: opacity 100ms, transform 140ms; pointer-events: none; min-height: 21px;
+}
+.tip.show { opacity: 1; transform: none; }

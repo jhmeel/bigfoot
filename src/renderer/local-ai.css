@@ -1,0 +1,55 @@
+.lai { width: 100%; display: flex; flex-direction: column; gap: 10px; text-align: left; }
+
+.lai-device { padding: 12px 14px; border-radius: var(--r-lg); background: var(--surface-1); border: 1px solid var(--hairline); }
+.lai-scan { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-2); }
+.lai-scan .spinner { color: var(--buddy); }
+.lai-hw { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px 16px; }
+.lai-hw div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lai-hw span { font-size: 10.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-3); }
+.lai-hw b { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.lai-rec { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0 2px; }
+.lai-rec span { font-size: 12px; color: var(--text-2); }
+.lai-rec b { font-size: 13px; }
+
+.lai-options { display: flex; flex-direction: column; border-radius: var(--r-lg); background: var(--surface-1); border: 1px solid var(--hairline); overflow: hidden; }
+.lai-opt {
+  -webkit-app-region: no-drag; display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 0; background: transparent;
+  text-align: left; position: relative; transition: background var(--fast);
+}
+.lai-opt + .lai-opt::before { content: ''; position: absolute; top: 0; left: 12px; right: 0; height: 1px; background: var(--hairline); }
+.lai-opt:hover:not(:disabled) { background: rgba(255, 255, 255, 0.04); }
+.lai-opt:disabled { opacity: 0.45; }
+.lai-opt[aria-checked='true'] { background: rgba(51, 128, 255, 0.08); opacity: 1; }
+.lai-dot { flex: none; width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid var(--border-strong); transition: border var(--fast); }
+.lai-opt[aria-checked='true'] .lai-dot { border: 5px solid var(--buddy); }
+.lai-size { width: 38px; font-size: 13px; font-weight: 650; }
+.lai-note { flex: 1; font-size: 12px; color: var(--text-2); }
+.lai-note.rec { color: var(--accent-text); font-weight: 600; }
+.lai-bytes { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.lai-tag { font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 8px; color: var(--success); background: rgba(52, 211, 153, 0.12); }
+
+.lai-installed { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-2); padding: 0 2px; }
+.lai-check { width: 16px; height: 16px; border-radius: 50%; background: var(--success) no-repeat center / 10px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2 5.2l2 2 4-4.4' fill='none' stroke='%23062' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.lai-foot { display: flex; justify-content: flex-end; }
+
+.lai-progress { padding: 12px 14px; border-radius: var(--r-lg); background: var(--surface-1); border: 1px solid var(--hairline); display: flex; flex-direction: column; gap: 8px; }
+.lai-p-head { display: flex; align-items: center; gap: 10px; min-height: 26px; }
+.lai-p-title { flex: 1; font-size: 13px; font-weight: 600; }
+.lai-p-actions { display: flex; gap: 4px; }
+.lai-bar { height: 6px; border-radius: 3px; background: var(--surface-4); overflow: hidden; position: relative; }
+.lai-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: linear-gradient(90deg, #2563eb, #3380ff); transition: width 400ms var(--ease); }
+.lai-progress[data-status='paused'] .lai-bar i { background: var(--text-3); }
+.lai-progress[data-status='waiting'] .lai-bar i { background: var(--warning); }
+.lai-progress[data-status='failed'] .lai-bar i { background: var(--danger); }
+.lai-bar.indeterminate i { width: 30% !important; animation: lai-slide 1.2s ease-in-out infinite; }
+@keyframes lai-slide { from { left: -30%; } to { left: 100%; } }
+.lai-p-detail { font-size: 11.5px; color: var(--text-2); font-variant-numeric: tabular-nums; line-height: 1.45; }
+.lai-p-detail.bad { color: var(--danger-text); }
+.lai-p-detail.warn { color: var(--warning); }
+
+.lai-banner { margin-bottom: 14px; }
+.lai-banner .lai-progress { background: linear-gradient(180deg, rgba(37, 99, 235, 0.12), rgba(37, 99, 235, 0.03)); border-color: rgba(51, 128, 255, 0.3); }
+.lai-banner.done .lai-progress { background: rgba(52, 211, 153, 0.08); border-color: rgba(52, 211, 153, 0.3); }
+.lai-banner.done .lai-bar i { background: var(--success); }

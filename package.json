@@ -1,0 +1,68 @@
+{
+  "name": "bigfoot",
+  "productName": "Bigfoot",
+  "version": "1.1.0",
+  "description": "An AI assistant that lives next to your cursor, sees your screen, talks, and operates your computer.",
+  "main": "src/main/main.js",
+  "author": "Bigfoot",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "build:native": "node scripts/build-native.js",
+    "prestart": "node scripts/build-native.js",
+    "predist": "node scripts/build-native.js",
+    "start": "electron .",
+    "test": "node --test test/core.test.js test/agent.test.js test/local.test.js test/plugins.test.js",
+    "dist": "electron-builder --win nsis --x64"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.129.0"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.bigfoot.app",
+    "productName": "Bigfoot",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "!src/**/*.cs"
+    ],
+    "asarUnpack": [
+      "src/main/native/**",
+      "src/main/plugins/validate-child.js"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Bigfoot",
+      "runAfterFinish": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "uninstallDisplayName": "Bigfoot",
+      "deleteAppDataOnUninstall": false,
+      "include": "build/installer.nsh"
+    },
+    "artifactName": "Bigfoot-Setup-${version}.${ext}"
+  }
+}
