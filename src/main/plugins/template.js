@@ -15,8 +15,9 @@ const TEMPLATE = `'use strict';
 //   Workflows           one tool that does several steps: open a project, start a server, open a URL
 //   Screen helpers      measure or mark things using ctx.screen.screenshot() and ctx.draw()
 //
-// HOW TO FINISH IT
-// Edit this example, then add it in Settings › General › Plugins › Add Plugin…
+// HOW TO MAKE YOURS
+// This file is read-only and always kept here. Copy it (for example to your Documents folder),
+// rename and edit the copy, then choose it in Settings › General › Plugins › Add Plugin…
 // It's checked before it's installed, and you'll see what the code can access.
 // The AI reads "description" and "input_schema" to decide when and how to use the tool, so say
 // what it does and when it's useful. Full guide: README.txt in the plugins folder.
@@ -69,9 +70,11 @@ Kinds of plugins
   Screen helpers       measure or mark things on screen
 
 Adding a plugin
-  1. Settings › General › Plugins › Create from Template saves a starter plugin you can edit.
-  2. Add Plugin… checks the file (syntax, the tool definition, its input schema, name clashes)
-     in a separate process, shows what the code can access, and installs it only if you confirm.
+  1. template\plugin-template.js is a documented starter plugin (read-only; it's always restored).
+     Copy it, rename it, and edit the copy.
+  2. Settings › General › Plugins › Add Plugin… opens at the template. Choose your plugin: it's
+     checked (syntax, the tool definition, its input schema, name clashes) in a separate process,
+     you see what the code can access, and it's installed only if you confirm.
 
 Rules
   - A plugin exports one tool, or an array of tools: { name, description, input_schema, run }.

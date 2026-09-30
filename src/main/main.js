@@ -9,18 +9,20 @@ const { Logger } = require('./logger');
 const { InputHelper } = require('./input');
 const { CostTracker } = require('./costs');
 const { Agent } = require('./agent');
-const { ComputerExecutor } = require('./computer');
+const { ComputerExecutor, READ_ONLY } = require('./computer');
+const { ACTIONS: COMPUTER_ACTIONS } = require('./llm/computer-schema');
 const { PluginRegistry } = require('./plugins/registry');
 const { PluginManager } = require('./plugins/manage');
 const { WindowManager } = require('./windows');
 const { AudioService } = require('./audio');
 const { ActivityLog } = require('./activity');
-const { Controller } = require('./controller');
+const { Controller, ONBOARDING_VERSION } = require('./controller');
 const { registerIpc } = require('./ipc');
 const { createTray } = require('./tray');
 const { resolveProvider } = require('./llm');
 const { LocalModelManager } = require('./local/manager');
 const { LocalRuntime } = require('./local/runtime');
+const { SpeechService } = require('./local/speech');
 
 const CURSOR_POLL_MS = 16;
 
@@ -49,6 +51,7 @@ async function start() {
   const isOnline = () => net.isOnline();
   const local = new LocalModelManager({ dir: path.join(app.getPath('userData'), 'local-ai'), settings, logger, isOnline });
   const runtime = new LocalRuntime({ manager: local, logger, settings });
+  const speech = new SpeechService({ logger });
 
   const plugins = new PluginRegistry(logger);
   plugins.loadBuiltins();
@@ -88,6 +91,9 @@ async function start() {
         activity.add('think', text);
       },
       action: (name, inp) => {
+        // The window is invisible in screenshots but would still catch the AI's clicks, so it
+        // steps aside only when the AI starts using the mouse or keyboard, never for a chat.
+        if (COMPUTER_ACTIONS.includes(name) && !READ_ONLY.has(name)) windows.hidePanel();
         logger.audit('action', { name, input: name === 'type' || name === 'write_file' ? { chars: String(inp.text || inp.content || '').length, path: inp.path } : inp });
         controller.panelLog('action', actionLabel(name, inp));
         activity.add('action', `${name} ${actionArgs(name, inp)}`.trim());
@@ -102,7 +108,7 @@ async function start() {
       markImage: async (png, points) => Buffer.from(await audio.call('mark-image', { png, points }, 15000)),
     },
   });
-  controller = new Controller({ windows, settings, agent, audio, input, costs, activity, logger, local, runtime, isOnline });
+  controller = new Controller({ windows, settings, agent, audio, input, costs, activity, logger, local, runtime, speech, isOnline });
 
   process.on('uncaughtException', (err) => {
     logger.error('Uncaught exception', err);
@@ -173,7 +179,7 @@ async function start() {
   if (settings.get('launchAtLogin')) app.setLoginItemSettings({ openAtLogin: true, args: ['--hidden'] });
 
   local.resumeOnStart();
-  setTimeout(() => runtime.preload(), 3000); // after the windows are up, so startup stays quick
+  setTimeout(() => { runtime.preload(); if (settings.get('keepAiLoaded') !== false) speech.preload(); }, 3000); // after the windows are up
 
   try {
     await input.start();
@@ -183,7 +189,11 @@ async function start() {
     controller.showError(Object.assign(new Error(`I can’t control the mouse or keyboard: ${err.message}. Reinstalling usually fixes this.`), { title: 'Input helper unavailable' }));
   }
 
-  if (!settings.get('onboarded')) windows.openOnboarding();
+  // Someone who finished an older setup (before the on-device model step) and has no model yet
+  // gets that step; everyone who already has a model is simply marked as up to date.
+  const oldSetup = settings.get('onboarded') && settings.get('onboardedVersion') < ONBOARDING_VERSION;
+  if (oldSetup && settings.get('localModel')) settings.update({ onboardedVersion: ONBOARDING_VERSION });
+  if (!settings.get('onboarded') || (oldSetup && !settings.get('localModel') && !local.active())) windows.openOnboarding();
   else if (!process.argv.includes('--hidden')) windows.openMain(resolveProvider(settings, { online: isOnline() }) ? 'home' : 'account');
   // Visual QA hooks; never set in normal use.
   if (process.env.BIGFOOT_DEMO === 'qa') global.bigfoot = { controller, windows, agent, audio, plugins, pluginManager, require };
@@ -203,6 +213,7 @@ async function start() {
     agent.stop();
     input.stop();
     runtime.stop();
+    speech.stop();
   });
 }
 

@@ -217,7 +217,7 @@ class LocalModelManager extends EventEmitter {
         job.file = f.runtime ? 'AI runtime' : f.name;
         await this.fetchVerified(job, f, doneBefore, signal);
         if (signal.aborted) return;
-        if (f.runtime) await this.installRuntime(job, f, signal);
+        if (f.runtime) await this.installRuntime(job, f, signal, this.runtimeDir(), 'llama-server.exe');
       }
       if (signal.aborted) return;
       await this.finish(job);
@@ -323,17 +323,16 @@ class LocalModelManager extends EventEmitter {
     }
   }
 
-  async installRuntime(job, f, signal) {
+  async installRuntime(job, f, signal, dest, exe) {
     this.set({ status: 'installing', message: '' });
     const zip = this.fileTarget(f, job.modelId);
-    const dest = this.runtimeDir();
     const tmp = `${dest}.tmp`;
     await fs.promises.rm(tmp, { recursive: true, force: true });
     await fs.promises.mkdir(tmp, { recursive: true });
     await this.extract(zip, tmp);
     if (signal.aborted) return;
-    const server = await findFile(tmp, 'llama-server.exe');
-    if (!server) throw new DownloadError('The AI runtime package is missing its server. Retry to download it again.', { retryable: false, code: 'runtime' });
+    const server = await findFile(tmp, exe);
+    if (!server) throw new DownloadError(`The downloaded package is missing ${exe}. Retry to download it again.`, { retryable: false, code: 'runtime' });
     await fs.promises.rm(dest, { recursive: true, force: true });
     await fs.promises.rename(path.dirname(server), dest).catch(() => fs.promises.rename(tmp, dest));
     await fs.promises.rm(tmp, { recursive: true, force: true });

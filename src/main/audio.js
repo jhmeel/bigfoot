@@ -14,6 +14,7 @@ class AudioService extends EventEmitter {
     this.waiters = new Map();
     this.seq = 0;
     this.speaking = false;
+    this.stream = null;
 
     ipcMain.on('engine:reply', (_e, { id, result, error }) => {
       const w = this.waiters.get(id);
@@ -111,7 +112,49 @@ class AudioService extends EventEmitter {
 
   stopSpeaking() {
     this.speaking = false;
+    this.stream = null; // drops sentences still waiting to be spoken
     this.call('stop-audio', {}, 3000).catch(() => {});
+  }
+
+  // ---------------------------------------------------------------- speaking a reply as it's written
+  /** Start a reply that arrives in pieces. */
+  beginStream() {
+    this.stream = { spoken: 0, said: '', queue: Promise.resolve('none'), used: 'none' };
+  }
+
+  /** The reply so far: speak every sentence that's now complete and not spoken yet. */
+  feedStream(text) {
+    const s = this.stream;
+    if (!s || !this.settings.get('speakResponses')) return;
+    // A new message (the AI acted, then wrote its answer): start counting from its beginning.
+    if (!text.startsWith(s.said || '')) s.spoken = 0;
+    s.said = text.slice(0, s.spoken);
+    const pending = text.slice(s.spoken);
+    const m = /^([\s\S]*[.!?…:;](?=\s)|[\s\S]*\n)/.exec(pending); // up to the last finished sentence
+    if (!m || !m[1].trim()) return;
+    s.spoken += m[1].length;
+    s.said = text.slice(0, s.spoken);
+    this.enqueue(s, m[1]);
+  }
+
+  /** The whole reply: speak what's left. Resolves when everything has been said, to the voice used. */
+  finishStream(text) {
+    const s = this.stream;
+    if (!s) return this.speak(text);
+    text = String(text);
+    // Only continue where speech left off if this is the same message; otherwise say it all.
+    const rest = s.said && text.startsWith(s.said) ? text.slice(s.spoken) : text;
+    if (rest.trim() && this.settings.get('speakResponses')) this.enqueue(s, rest);
+    return s.queue.then(() => (this.stream === s ? s.used : 'none'));
+  }
+
+  enqueue(s, sentence) {
+    s.queue = s.queue.then(async () => {
+      if (this.stream !== s) return 'none';
+      const used = await this.speak(sentence.trim());
+      if (used !== 'none') s.used = used;
+      return used;
+    });
   }
 }
 

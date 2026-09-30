@@ -6,8 +6,10 @@
 const { EventEmitter } = require('events');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
+const fs = require('fs');
 const net = require('net');
 const os = require('os');
+const path = require('path');
 const hardware = require('./hardware');
 
 const IDLE_MS = 10 * 60 * 1000;
@@ -17,14 +19,23 @@ const MAX_RESTARTS = 3;
 const RESTART_WINDOW_MS = 10 * 60 * 1000;
 
 /**
- * Speed settings for this PC. Encoding the screenshot is the slowest step on machines without a
- * graphics card and grows with the image's token count, so smaller machines get smaller images.
+ * Speed settings for this PC, from measurements on a laptop without a graphics card (i5-8350U,
+ * UHD 620): the Vulkan backend on an integrated GPU read prompts at 3 tokens/s against 24–36 on the
+ * CPU, pinning memory with mlock starved an 8 GB machine, and reading a screenshot fell from 113 s
+ * to 26 s at 256 image tokens. So integrated GPUs run on the CPU with small images.
  */
 function tuningFor(hw) {
   const vram = hw && hw.dedicated ? hw.vramGB : 0;
-  if (vram >= 6) return { imageTokens: 1024, edge: 1280 };
-  if (vram > 0) return { imageTokens: 768, edge: 1280 };
-  return { imageTokens: 448, edge: 1024 };
+  const bigRam = hw && hw.ramGB >= 16;
+  if (vram >= 6) return { imageTokens: 1024, edge: 1280, cpuOnly: false, lock: bigRam };
+  if (vram > 0) return { imageTokens: 768, edge: 1280, cpuOnly: false, lock: bigRam };
+  return { imageTokens: 256, edge: 1024, cpuOnly: true, lock: false };
+}
+
+/** Leave a core for Windows and the user's apps, so the PC stays responsive while the model works. */
+function threadCount() {
+  const physical = Math.max(1, Math.round(os.cpus().length / 2));
+  return Math.max(2, physical - 1);
 }
 
 class RuntimeError extends Error {
@@ -68,6 +79,39 @@ class LocalRuntime extends EventEmitter {
   }
 
   get running() { return Boolean(this.endpoint); }
+
+  /** Where the server saves a read prompt, so it doesn't have to read it again after a restart. */
+  cacheDir() {
+    const dir = path.join(this.manager.dir, 'cache');
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+
+  /** Save or restore the server's conversation cache (slot 0) under a name. Never throws. */
+  async slot(action, filename) {
+    if (!this.endpoint) return false;
+    try {
+      const res = await fetch(`${this.endpoint.baseUrl}/slots/0?action=${action}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.endpoint.apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename }),
+        signal: AbortSignal.timeout(60000),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Keep only the newest saved prompt; older ones belong to a previous name or tool list. */
+  pruneCache(keep) {
+    try {
+      for (const f of fs.readdirSync(this.cacheDir())) {
+        if (f !== keep && f.endsWith('.bin')) fs.rmSync(path.join(this.cacheDir(), f), { force: true });
+      }
+    } catch { /* not critical */ }
+  }
+
   get keepLoaded() { return !this.settings || this.settings.get('keepAiLoaded') !== false; }
 
   /** Load the model now if it should stay loaded (at startup, after install, after a crash). */
@@ -152,13 +196,17 @@ class LocalRuntime extends EventEmitter {
       '--jinja', '--no-webui',
       '--image-max-tokens', String(this.tuning.imageTokens),
       '--cache-reuse', '256', // reuse cached context even after older screenshots are dropped
-      ...(this.noLock ? [] : ['--load-mode', 'mmap+mlock']), // keep the model in RAM; skipped if Windows refuses
+      '--threads', String(threadCount()), '--threads-batch', String(threadCount()),
+      '--slot-save-path', this.cacheDir(),
+      ...(this.tuning.cpuOnly ? ['--device', 'none'] : []),
+      ...(this.tuning.lock && !this.noLock ? ['--load-mode', 'mmap+mlock'] : []),
     ];
     this.log = [];
     this.emit('state', 'starting');
     if (this.logger) this.logger.info(`Starting the local AI: ${files.label}, ${ctx} context`);
     const proc = spawn(files.server, args, { cwd: files.cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     this.proc = proc;
+    try { os.setPriority(proc.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* not critical */ }
     const keep = (d) => {
       for (const line of String(d).split(/\r?\n/)) if (line.trim()) this.log.push(line.trim());
       if (this.log.length > LOG_LINES) this.log.splice(0, this.log.length - LOG_LINES);
@@ -231,4 +279,4 @@ function explainExit(code, log) {
   return `The local AI stopped unexpectedly (exit code ${code})${last ? `: ${last.slice(0, 160)}` : ''}.`;
 }
 
-module.exports = { LocalRuntime, RuntimeError, explainExit, contextSize, tuningFor };
+module.exports = { LocalRuntime, RuntimeError, explainExit, contextSize, tuningFor, threadCount };

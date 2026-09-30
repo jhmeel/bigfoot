@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const os = require('os');
 const path = require('path');
 
-const { costOf, CostTracker, BudgetExceeded } = require('../src/main/costs');
+const { costOf, CostTracker } = require('../src/main/costs');
 const { comboToVks, splitCombo } = require('../src/main/input');
 const { extractPoint } = require('../src/main/agent');
 const { echoContent } = require('../src/main/llm/anthropic');
@@ -34,11 +34,14 @@ test('costs use list prices and every billed fallback attempt', () => {
   assert.equal(costOf('mystery-model', { input_tokens: 1_000_000 }).cost, 10); // unknown = highest rate
 });
 
-test('spending limit stops a task', () => {
+test('usage is tracked per task and per session', () => {
   const t = new CostTracker();
   t.record('claude-opus-5-5', { input_tokens: 600_000 });
-  assert.throws(() => t.check(2), BudgetExceeded);
-  assert.doesNotThrow(() => t.check(0));
+  t.startTask();
+  t.record('qwen3-vl-2b', { input_tokens: 1000 });
+  assert.equal(t.task.input, 1000);
+  assert.equal(t.session.input, 601_000);
+  assert.equal(t.task.cost, 0);
 });
 
 test('key combos map to virtual-key codes', () => {

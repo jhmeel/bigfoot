@@ -1,7 +1,7 @@
 {
   "name": "bigfoot",
   "productName": "Bigfoot",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "An AI assistant that lives next to your cursor, sees your screen, talks, and operates your computer.",
   "main": "src/main/main.js",
   "author": "Bigfoot",
@@ -9,10 +9,11 @@
   "private": true,
   "scripts": {
     "build:native": "node scripts/build-native.js",
-    "prestart": "node scripts/build-native.js",
-    "predist": "node scripts/build-native.js",
+    "fetch:speech": "node scripts/fetch-speech.js",
+    "prestart": "node scripts/build-native.js && node scripts/fetch-speech.js",
+    "predist": "node scripts/build-native.js && node scripts/fetch-speech.js",
     "start": "electron .",
-    "test": "node --test test/core.test.js test/agent.test.js test/local.test.js test/plugins.test.js",
+    "test": "node --test test/core.test.js test/agent.test.js test/local.test.js test/plugins.test.js test/speech-stream.test.js",
     "dist": "electron-builder --win nsis --x64"
   },
   "dependencies": {
@@ -33,6 +34,12 @@
       "src/**/*",
       "package.json",
       "!src/**/*.cs"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/speech",
+        "to": "speech"
+      }
     ],
     "asarUnpack": [
       "src/main/native/**",

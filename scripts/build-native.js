@@ -16,9 +16,13 @@ const fw = path.join(process.env.SystemRoot || 'C:\\Windows', 'Microsoft.NET', '
 const mtime = (f) => { try { return fs.statSync(f).mtimeMs; } catch { return 0; } };
 if (mtime(exe) >= mtime(source) && !process.argv.includes('--force')) process.exit(0);
 
+const winmd = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WinMetadata');
 execFileSync(path.join(fw, 'csc.exe'), [
   '-nologo', '-optimize', '-target:exe', `-lib:${path.join(fw, 'WPF')}`,
   '-r:System.Speech.dll', '-r:UIAutomationClient.dll', '-r:UIAutomationTypes.dll', '-r:WindowsBase.dll',
+  // Windows handwriting recognition (WinRT) without the Windows SDK
+  `-r:${path.join(fw, 'System.Runtime.dll')}`, `-r:${path.join(fw, 'System.Runtime.WindowsRuntime.dll')}`,
+  `-r:${path.join(winmd, 'Windows.Foundation.winmd')}`, `-r:${path.join(winmd, 'Windows.UI.winmd')}`,
   `-out:${exe}`, source,
 ], { stdio: 'inherit' });
 console.log('Built src/main/native/input-helper.exe');

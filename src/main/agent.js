@@ -2,7 +2,6 @@
 // The agent loop: send the conversation to the model, run the tools it calls, repeat until it answers.
 // Provider details (local Qwen3-VL, Claude, OpenAI) live in ./llm; this file only sees normalized turns.
 
-const { BudgetExceeded } = require('./costs');
 const { systemPrompt } = require('./prompt');
 const llm = require('./llm');
 const { ProviderError } = require('./llm/errors');
@@ -154,7 +153,6 @@ class Agent {
       }
     } catch (err) {
       if (err instanceof StoppedError || (this.abort && this.abort.signal.aborted)) return { status: 'stopped', text: '' };
-      if (err instanceof BudgetExceeded) throw new AgentError(err.message, 'Spending limit reached');
       throw err;
     } finally {
       this.running = false;
@@ -165,7 +163,6 @@ class Agent {
   async loop(provider, signal) {
     const maxTurns = this.settings.get('maxTurns');
     for (let turn = 0; turn < maxTurns; turn++) {
-      this.costs.check(this.settings.get('maxCostPerTask'));
       this.hooks.state('processing');
       const step = await provider.step(signal, (msg) => this.hooks.terminal('info', msg));
       this.costs.record(step.model, step.usage);

@@ -6,6 +6,8 @@ const path = require('path');
 const { inspectPlugin } = require('./validate');
 const { TEMPLATE, README } = require('./template');
 
+const TEMPLATE_NAME = 'plugin-template.js';
+
 const BUILTIN_GROUPS = {
   'builtin/annotate.js': 'Draw on the screen',
   'builtin/drawing.js': 'Edit your drawing',
@@ -19,10 +21,24 @@ class PluginManager {
     Object.assign(this, { registry, dir, logger, onChange });
   }
 
+  /** Where Add Plugin… opens: always holds the template (restored if it's deleted or edited). */
+  templateDir() { return path.join(this.dir, 'template'); }
+
   ensureFolder() {
-    fs.mkdirSync(this.dir, { recursive: true });
+    fs.mkdirSync(this.templateDir(), { recursive: true });
     const readme = path.join(this.dir, 'README.txt');
-    if (!fs.existsSync(readme)) fs.writeFileSync(readme, README);
+    try { if (fs.readFileSync(readme, 'utf8') !== README) throw new Error('outdated'); } catch { fs.writeFileSync(readme, README); }
+    // The template sits in a subfolder, so it's never loaded as a plugin itself, and it's read-only:
+    // copy it next to it (or anywhere) to make your own.
+    const file = path.join(this.templateDir(), TEMPLATE_NAME);
+    let current = null;
+    try { current = fs.readFileSync(file, 'utf8'); } catch { /* missing */ }
+    if (current !== TEMPLATE) {
+      try { fs.chmodSync(file, 0o666); } catch { /* missing */ }
+      fs.writeFileSync(file, TEMPLATE);
+    }
+    try { fs.chmodSync(file, 0o444); } catch { /* not critical */ }
+    return file;
   }
 
   list() {
@@ -54,7 +70,11 @@ class PluginManager {
     if (!report.ok) return { ok: false, report };
     this.ensureFolder();
     const dest = path.join(this.dir, path.basename(file));
-    if (path.resolve(dest) !== path.resolve(file)) await fs.promises.copyFile(file, dest);
+    if (path.resolve(dest) !== path.resolve(file)) {
+      await fs.promises.chmod(dest, 0o666).catch(() => {});
+      await fs.promises.copyFile(file, dest);
+      await fs.promises.chmod(dest, 0o666).catch(() => {}); // a copy of the read-only template stays editable
+    }
     const loaded = this.registry.loadUserPlugin(dest);
     if (!loaded) return { ok: false, report: { ...report, ok: false, errors: [this.registry.failures.get(path.basename(dest))] } };
     this.logger && this.logger.info(`Installed plugin ${path.basename(dest)}: ${report.tools.map((t) => t.name).join(', ')}`);
@@ -71,10 +91,6 @@ class PluginManager {
     this.onChange();
   }
 
-  async writeTemplate(dest) {
-    await fs.promises.writeFile(dest, TEMPLATE);
-    return dest;
-  }
 }
 
-module.exports = { PluginManager, BUILTIN_GROUPS };
+module.exports = { PluginManager, BUILTIN_GROUPS, TEMPLATE_NAME };

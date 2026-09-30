@@ -11,15 +11,15 @@ const INVOKE = new Set([
   'onboarding:finish', 'window:close', 'window:minimize', 'panel:resize', 'approval:answer',
   'terminal:open', 'terminal:get', 'terminal:clear', 'terminal:reveal',
   'local:hardware', 'local:status', 'local:start', 'local:pause', 'local:resume', 'local:cancel', 'local:remove',
-  'toolbar:pick', 'math:read', 'ink:stop',
-  'plugins:list', 'plugins:pick', 'plugins:install', 'plugins:remove', 'plugins:template',
+  'toolbar:pick', 'math:read', 'math:ink', 'ink:stop',
+  'plugins:list', 'plugins:pick', 'plugins:install', 'plugins:remove',
 ]);
 const SEND = new Set([
   'overlay:ready', 'overlay:fly-done', 'overlay:region', 'panel:ready',
   'engine:ready', 'engine:reply', 'engine:level', 'engine:vad', 'ink:passthrough', 'ink:reply', 'ink:state',
 ]);
 const RECEIVE = new Set([
-  'cursor', 'state', 'bubble', 'bubble-live', 'fly', 'banner', 'welcome', 'settings', 'log', 'usage', 'level',
+  'cursor', 'state', 'bubble', 'bubble-live', 'fly', 'banner', 'welcome', 'settings', 'log', 'log-live', 'usage', 'level',
   'engine:cmd', 'approval:show', 'buddy:visible', 'annotate', 'select', 'region', 'terminal:line',
   'local:progress', 'local:runtime', 'toolbar:show', 'ink', 'voice-mode',
 ]);

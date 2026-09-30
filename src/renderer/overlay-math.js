@@ -1,5 +1,6 @@
 'use strict';
-// Math tool: handwriting on the overlay, each separate expression answered as the user writes.
+// Math tool: handwriting on the overlay, each separate expression read as it's written and solved
+// (or checked, if the user wrote an answer) when the user presses Solve.
 
 (() => {
   const api = window.buddy;
@@ -9,7 +10,7 @@
   const answers = document.getElementById('math-answers');
   const g = canvas.getContext('2d');
 
-  const PAUSE_MS = 900;       // read an expression this long after the pen lifts
+  const PAUSE_MS = 200;       // read an expression this soon after the pen lifts
   const GROUP_GAP = 90;       // strokes closer than this belong to the same expression
   const INK = '#f5f7ff';
   const MAX_EDGE = 768;
@@ -71,32 +72,53 @@
     });
   }
 
-  // ---------------------------------------------------------------- answers
-  function answerEl(grp) {
+  // ---------------------------------------------------------------- answers and live reading
+  function place(grp) {
     if (!grp.el) {
       grp.el = document.createElement('div');
       grp.el.className = 'math-answer';
-      answers.append(grp.el);
+      grp.reading = document.createElement('div');
+      grp.reading.className = 'math-reading';
+      answers.append(grp.el, grp.reading);
     }
     const b = grp.box;
     const h = Math.max(28, Math.min(64, (b.y1 - b.y0) * 0.8));
     grp.el.style.left = `${b.x1 + 18}px`;
     grp.el.style.top = `${(b.y0 + b.y1) / 2}px`;
     grp.el.style.fontSize = `${h}px`;
-    return grp.el;
+    grp.reading.style.left = `${b.x0}px`;
+    grp.reading.style.top = `${b.y1 + 10}px`;
   }
 
   function showAnswer(grp, { state, text = '', title = '' }) {
-    const el = answerEl(grp);
+    place(grp);
+    const el = grp.el;
     el.dataset.state = state;
     el.title = title;
     el.textContent = state === 'thinking' ? '' : text;
-    requestAnimationFrame(() => el.classList.add('show'));
+    el.classList.toggle('show', Boolean(text) || state === 'thinking');
+  }
+
+  /** What the recognizer read, typeset under the handwriting with its Solve button. */
+  function showReading(grp, text) {
+    place(grp);
+    grp.reading.textContent = '';
+    if (text) {
+      const label = document.createElement('span');
+      label.textContent = text;
+      const solveBtn = document.createElement('button');
+      solveBtn.className = 'math-solve';
+      solveBtn.textContent = 'Solve';
+      solveBtn.addEventListener('pointerdown', (e) => e.stopPropagation()); // not the start of a stroke
+      solveBtn.addEventListener('click', (e) => { e.stopPropagation(); solve(grp); });
+      grp.reading.append(label, solveBtn);
+    }
+    grp.reading.classList.toggle('show', Boolean(text));
   }
 
   function removeGroup(grp) {
     clearTimeout(grp.timer);
-    if (grp.el) grp.el.remove();
+    if (grp.el) { grp.el.remove(); grp.reading.remove(); }
     groups = groups.filter((x) => x !== grp);
   }
 
@@ -120,25 +142,52 @@
     return (await off.convertToBlob({ type: 'image/png' })).arrayBuffer();
   }
 
+  /**
+   * Recognize the handwriting (Windows, ~0.1 s) and show the clean reading as the user writes.
+   * Answers wait for Solve: "=" alone can't tell a sum from an equation.
+   */
   async function read(grp) {
     const version = grp.version;
-    showAnswer(grp, { state: 'thinking' });
     let res;
     try {
-      res = await api.invoke('math:read', await snapshot(grp));
+      res = await api.invoke('math:ink', grp.strokes);
     } catch (err) {
       res = { ok: false, message: err.message };
     }
     if (!groups.includes(grp) || grp.version !== version) return; // more ink arrived meanwhile
-    if (!res.ok) showAnswer(grp, { state: 'error', text: '!', title: res.message || 'Couldn’t read that' });
-    else if (!res.answer) showAnswer(grp, { state: 'unknown', text: '?', title: res.expression ? `Read “${res.expression}”` : 'Couldn’t read that' });
-    else showAnswer(grp, { state: 'done', text: /^[a-z]\s*=/i.test(res.answer) ? res.answer : `= ${res.answer}`, title: res.expression });
+    grp.result = res.ok ? res : null;
+    if (!res.ok) { showReading(grp, ''); showAnswer(grp, { state: 'error', text: '!', title: res.message || 'Couldn’t read that' }); return; }
+    showReading(grp, res.text || (grp.strokes.length ? '…' : ''));
+  }
+
+  /** Show the answer for one expression. Sums are exact; anything with a letter goes to the AI model. */
+  async function solve(grp) {
+    const version = grp.version;
+    const res = grp.result;
+    switch (res && res.status) {
+      case 'writing':
+      case 'answer': showAnswer(grp, { state: 'done', text: res.answer, title: res.expression }); return;
+      case 'right': showAnswer(grp, { state: 'right', text: '✓', title: 'Correct' }); return;
+      case 'wrong': showAnswer(grp, { state: 'wrong', text: res.answer, title: `That's ${res.answer}, not ${res.given}` }); return;
+      default: break;
+    }
+    showAnswer(grp, { state: 'thinking' });
+    let ai;
+    try {
+      ai = await api.invoke('math:read', await snapshot(grp));
+    } catch (err) {
+      ai = { ok: false, message: err.message };
+    }
+    if (!groups.includes(grp) || grp.version !== version) return;
+    if (!ai.ok || !ai.answer) showAnswer(grp, { state: 'unknown', text: '?', title: ai.message || 'Couldn’t solve that' });
+    else showAnswer(grp, { state: 'done', text: ai.answer.replace(/^=\s*/, ''), title: ai.expression });
   }
 
   function schedule(grp) {
     grp.version++;
+    grp.result = null;
     clearTimeout(grp.timer);
-    if (grp.el) grp.el.classList.remove('show');
+    showAnswer(grp, { state: 'none' }); // the ink changed: the old answer no longer applies
     grp.timer = setTimeout(() => read(grp), PAUSE_MS);
   }
 
@@ -195,6 +244,7 @@
     redraw();
   }
 
+  document.getElementById('math-solve-all').addEventListener('click', () => groups.forEach(solve));
   document.getElementById('math-undo').addEventListener('click', undo);
   document.getElementById('math-clear').addEventListener('click', clearAll);
   document.getElementById('math-done').addEventListener('click', () => api.invoke('ink:stop'));
@@ -202,6 +252,7 @@
     if (!active) return;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
     if (e.key === 'Delete' || e.key === 'Backspace') clearAll();
+    if (e.key === 'Enter') groups.forEach(solve);
   });
 
   api.on('ink', ({ active: on, mode, displayId: target, clear }) => {

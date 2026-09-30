@@ -12,10 +12,8 @@ const LIST_PRICES = {
   'claude-haiku-4-5': { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
   'qwen3-vl': { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, // runs on the user's PC
 };
-// Unknown models are costed at the highest rate so spend limits err on the safe side.
+// Unknown models are costed at the highest rate so estimates err on the safe side.
 const FALLBACK_PRICE = LIST_PRICES['claude-fable-5-1'];
-
-class BudgetExceeded extends Error {}
 
 const emptyUsage = () => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, requests: 0 });
 
@@ -63,11 +61,6 @@ class CostTracker {
     add(this.session, u);
     return u;
   }
-  check(maxPerTask) {
-    if (maxPerTask > 0 && this.task.cost >= maxPerTask) {
-      throw new BudgetExceeded(`This task reached its $${maxPerTask.toFixed(2)} spending limit. You can raise it in Settings.`);
-    }
-  }
 }
 
-module.exports = { CostTracker, BudgetExceeded, costOf, priceFor, LIST_PRICES };
+module.exports = { CostTracker, costOf, priceFor, LIST_PRICES };

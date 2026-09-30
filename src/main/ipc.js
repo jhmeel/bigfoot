@@ -82,6 +82,7 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
   // ---- tool tray and math
   handle('toolbar:pick', (tool) => { controller.pickTool(tool); return true; });
   handle('math:read', (png) => controller.readMath(png));
+  handle('math:ink', (strokes) => controller.readMathInk(strokes));
   handle('ink:stop', () => { controller.stopInk(); return true; });
   ipcMain.on('ink:reply', (_e, msg) => controller.onInkReply(msg || {}));
   ipcMain.on('ink:state', (event, state) => controller.onInkState(windows.displayIdOf(event.sender), state || {}));
@@ -136,8 +137,10 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
   // ---- plugins
   handle('plugins:list', () => pluginManager.list());
   handle('plugins:pick', async (event) => {
+    const template = pluginManager.ensureFolder();
     const res = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), {
       title: 'Add a plugin', buttonLabel: 'Check Plugin', properties: ['openFile'],
+      defaultPath: template, // opens beside the template, ready to copy and edit
       filters: [{ name: 'Bigfoot plugin', extensions: ['js'] }],
     });
     if (res.canceled || !res.filePaths[0]) return null;
@@ -150,18 +153,6 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
   handle('plugins:remove', async (file) => {
     await pluginManager.remove(String(file), (p) => shell.trashItem(p));
     return pluginManager.list();
-  });
-  handle('plugins:template', async (event) => {
-    const res = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
-      title: 'Save a new plugin', buttonLabel: 'Create',
-      defaultPath: path.join(app.getPath('documents'), 'my-bigfoot-plugin.js'),
-      filters: [{ name: 'Bigfoot plugin', extensions: ['js'] }],
-    });
-    if (res.canceled || !res.filePath) return null;
-    await pluginManager.writeTemplate(res.filePath);
-    shell.showItemInFolder(res.filePath);
-    shell.openPath(res.filePath);
-    return res.filePath;
   });
   handle('app:open-link', (which) => { if (LINKS[which]) shell.openExternal(LINKS[which]); });
   handle('app:info', () => ({

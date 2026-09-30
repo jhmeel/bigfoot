@@ -2,11 +2,13 @@
 // Qwen3-VL on this PC via llama.cpp's OpenAI-compatible server. Qwen3-VL points on a 0-1000 grid
 // regardless of image size, so coordinates are converted to and from screenshot pixels here.
 
+const crypto = require('crypto');
 const { OpenAIProvider, ask } = require('./openai');
 const { computerFunction } = require('./computer-schema');
 const { ProviderError, requestJson } = require('./errors');
 
 const GRID = 1000;
+const LOCAL_TIMEOUT_MS = 10 * 60 * 1000; // a first, uncached request on a slow CPU can take minutes
 const SAMPLING = { temperature: 0.2, top_p: 0.8, top_k: 20, repeat_penalty: 1.05 };
 
 const GRID_NOTE = `
@@ -29,6 +31,7 @@ class LocalProvider extends OpenAIProvider {
     this.runtime = runtime;
     this.screen = screen;
     this.keepImages = 4;
+    this.timeoutMs = LOCAL_TIMEOUT_MS;
     this.onText = null; // (textSoFar) => void, for showing the reply as it's written
   }
 
@@ -46,14 +49,22 @@ class LocalProvider extends OpenAIProvider {
     this.keepImages = keep;
   }
 
-  /** Read the fixed part of every request (instructions and tools) ahead of time. */
+  /**
+   * Read the fixed part of every request (instructions and tools) ahead of time. The result is
+   * saved to disk, so after a restart it's restored in seconds instead of read again (100 s on a
+   * laptop without a graphics card).
+   */
   async warm() {
     const { url, key } = await this.endpoint();
+    const file = `${this.model}-${crypto.createHash('sha1').update(JSON.stringify([this.messages[0], this.tools])).digest('hex').slice(0, 16)}.bin`;
+    const restored = await this.runtime.slot('restore', file);
     await requestJson(`${url}/chat/completions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: this.model, messages: [this.messages[0], { role: 'user', content: 'hi' }], tools: this.tools, max_tokens: 1 }),
-    }, this.label);
+    }, this.label, undefined, LOCAL_TIMEOUT_MS);
+    if (!restored && await this.runtime.slot('save', file)) this.runtime.pruneCache(file);
+    return restored;
   }
 
   /** Streams the answer so it can be shown while it's being written. */
@@ -69,7 +80,7 @@ class LocalProvider extends OpenAIProvider {
           model: this.model, messages: this.messages, tools: this.tools, tool_choice: 'auto',
           ...this.requestExtras(), stream: true, stream_options: { include_usage: true },
         }),
-        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(300000)]) : AbortSignal.timeout(300000),
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(LOCAL_TIMEOUT_MS)]) : AbortSignal.timeout(LOCAL_TIMEOUT_MS),
       });
     } catch (err) {
       if (signal && signal.aborted) throw err;
@@ -214,7 +225,7 @@ async function readStream(res, onText) {
 
 async function askLocal(runtime, { prompt, image, maxTokens = 300, signal }) {
   return runtime.use((e) => ask({
-    url: `${e.baseUrl}/v1`, key: e.apiKey, model: e.model, label: 'The local AI', prompt, image, signal,
+    url: `${e.baseUrl}/v1`, key: e.apiKey, model: e.model, label: 'The local AI', prompt, image, signal, timeoutMs: LOCAL_TIMEOUT_MS,
     extras: { ...SAMPLING, temperature: 0, max_tokens: maxTokens, max_completion_tokens: undefined },
   }));
 }

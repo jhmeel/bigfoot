@@ -3,7 +3,7 @@
 ; Stop Bigfoot's own helper processes so their files aren't locked. Matched by path, so an
 ; unrelated llama-server the user runs elsewhere is never touched.
 !macro stopBigfootHelpers
-  nsExec::Exec `powershell.exe -NoProfile -NonInteractive -Command "Get-Process input-helper,llama-server -ErrorAction SilentlyContinue | Where-Object { $$_.Path -like '*\Bigfoot\*' } | Stop-Process -Force"`
+  nsExec::Exec `powershell.exe -NoProfile -NonInteractive -Command "Get-Process input-helper,llama-server,whisper-server -ErrorAction SilentlyContinue | Where-Object { $$_.Path -like '*\Bigfoot\*' } | Stop-Process -Force"`
   Pop $0
 !macroend
 

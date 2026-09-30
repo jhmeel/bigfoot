@@ -32,8 +32,9 @@ an app when an API or a file can do the job directly: it's faster and far more r
 
 In Settings › General › Plugins:
 
-1. **Create from Template** saves a documented starter plugin and opens it for editing.
-2. **Add Plugin…** checks the file before anything is installed: syntax, the tool definition, the
+1. **Add Plugin…** opens at `plugins\template\plugin-template.js`, a documented starter plugin. It's
+   read-only and always restored, so copy it, rename it, and edit the copy.
+2. Choosing your plugin checks it before anything is installed: syntax, the tool definition, the
    input schema, and name clashes, with the plugin loaded in a separate, time-limited process. It
    then shows what the code can reach (run programs, files, the internet, …) and installs only when
    you confirm. The new tools are available from your next request; no restart needed.

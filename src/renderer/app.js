@@ -4,7 +4,8 @@
 (async () => {
   const api = window.buddy;
   const $ = (id) => document.getElementById(id);
-  const TITLES = { home: 'Home', terminal: 'Terminal', assistant: 'Assistant', account: 'Models', voice: 'Voice', listening: 'Listening', safety: 'Safety', general: 'General' };
+  const TITLES = { home: 'Home', terminal: 'Terminal', assistant: 'Assistant', account: 'Models', voice: 'Voice', general: 'General' };
+  const ALIASES = { listening: 'voice' }; // older links to the Listening page
   const PROVIDER_KEY = { openai: 'openaiKey', elevenlabs: 'elevenlabsKey' };
   const PROVIDER_NAME = { openai: 'OpenAI', elevenlabs: 'ElevenLabs', system: 'System' };
   const update = (patch) => api.invoke('settings:update', patch).then((v) => { s = v; return v; });
@@ -15,6 +16,7 @@
   // ------------------------------------------------------------------ navigation
   let micTesting = false;
   function show(section) {
+    section = ALIASES[section] || section;
     if (!TITLES[section]) section = 'home';
     document.querySelectorAll('nav button').forEach((b) => b.setAttribute('aria-current', String(b.dataset.section === section)));
     document.querySelectorAll('[data-pane]').forEach((p) => { p.hidden = p.dataset.pane !== section; });
@@ -23,8 +25,8 @@
     // Home and Terminal fill the window and scroll inside; settings pages scroll as a whole.
     $('pane').classList.toggle('fill', section === 'home' || section === 'terminal');
     document.dispatchEvent(new CustomEvent('section-shown', { detail: section }));
-    if (section !== 'listening' && micTesting) toggleMicTest(false);
-    if (section === 'listening') refreshMic();
+    if (section !== 'voice' && micTesting) toggleMicTest(false);
+    if (section === 'voice') refreshMic();
     // segmented thumbs need layout to measure
     requestAnimationFrame(() => document.querySelectorAll('[data-pane]:not([hidden]) .segmented').forEach((el) => el._seg && el._seg.set(el._value())));
   }
@@ -237,7 +239,7 @@
   function refreshStt() {
     const cloud = s.sttProvider !== 'local';
     $('stt-key-row').hidden = !cloud;
-    $('stt-hint').textContent = cloud ? 'Needs internet; offline, this PC recognizes speech' : 'Private, works offline';
+    $('stt-hint').textContent = cloud ? 'Needs internet; offline, Whisper on this PC is used' : 'Whisper · private, works offline';
     if (!cloud) return;
     $('stt-key-label').textContent = `${PROVIDER_NAME[s.sttProvider]} API key`;
     sttKey.setHas(s.has[PROVIDER_KEY[s.sttProvider]]);
@@ -271,29 +273,6 @@
   $('mic-settings').addEventListener('click', () => api.invoke('app:open-link', 'micSettings'));
   window.addEventListener('focus', () => { if (!$('mic-status').closest('[hidden]')) refreshMic(); });
 
-  // ------------------------------------------------------------------ Safety
-  const approvalHints = {
-    risky: '',
-    every: '',
-    auto: 'Only use this on a spare PC or virtual machine.',
-  };
-  seg('approval', () => s.approvalMode, async (v) => { await update({ approvalMode: v }); $('approval-hint').textContent = approvalHints[v]; });
-  $('approval-hint').textContent = approvalHints[s.approvalMode];
-  $('max-cost').value = s.maxCostPerTask;
-  $('max-cost').addEventListener('change', () => {
-    const v = Math.max(0, Number($('max-cost').value) || 0);
-    $('max-cost').value = v;
-    update({ maxCostPerTask: v });
-  });
-  $('max-turns').value = s.maxTurns;
-  $('max-turns').addEventListener('change', () => {
-    const v = Math.max(5, Math.min(300, Math.round(Number($('max-turns').value) || 60)));
-    $('max-turns').value = v;
-    update({ maxTurns: v });
-  });
-  $('blocked').value = s.blockedWindowKeywords;
-  $('blocked').addEventListener('change', () => update({ blockedWindowKeywords: $('blocked').value }));
-
   // ------------------------------------------------------------------ General
   UI.switchControl($('show-buddy'), s.showBuddy, (v) => update({ showBuddy: v }));
   UI.switchControl($('sounds'), s.soundEffects, (v) => update({ soundEffects: v }));
@@ -318,7 +297,7 @@
     label.append(el('span', 'headline', title), el('div', `hint${error ? ' error' : plain ? '' : ' mono-list'}`, detail));
     row.append(label);
     if (action) row.append(action);
-    if (badge) row.append(el('span', `badge ${badge === 'Built in' ? '' : 'custom'}`, badge));
+    if (badge) row.append(el('span', 'badge custom', badge));
     return row;
   }
 
@@ -326,9 +305,9 @@
     const { builtin, custom } = await api.invoke('plugins:list');
     const list = $('plugin-list');
     list.textContent = '';
-    for (const g of builtin) list.append(pluginRow(g.title, g.tools.join(' · '), 'Built in'));
+    for (const g of builtin) list.append(pluginRow(g.title, g.tools.join(' · '), null));
     if (!custom.length) {
-      list.append(pluginRow('No custom plugins yet', 'Create one from the template, then add it here.', null, { plain: true }));
+      list.append(pluginRow('No custom plugins yet', 'Add Plugin… opens beside a template you can copy and edit.', null, { plain: true }));
     }
     for (const p of custom) {
       const remove = el('button', 'btn plain small', 'Remove');
@@ -397,7 +376,6 @@
       $('plugin-add').disabled = false;
     }
   });
-  $('plugin-template').addEventListener('click', () => api.invoke('plugins:template'));
   renderPlugins();
 
   api.on('settings', (v) => {
