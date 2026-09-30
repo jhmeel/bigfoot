@@ -275,7 +275,11 @@ test('handwriting is read live: answered after "=", checked when the user wrote 
   assert.equal(interpretInk([['12+7=20']]).answer, '19');
   assert.equal(interpretInk([['12+7=19']]).status, 'right');
   assert.equal(interpretInk([['9÷3']]).status, 'writing'); // no "=" yet: show the reading only
-  assert.equal(interpretInk([['2x+1=7']]).status, 'solve');
+  assert.equal(interpretInk([['2x+1=7']]).answer, 'x = 3'); // solved here, no model needed
+  assert.equal(interpretInk([['2b+1=7']]).answer, 'b = 3'); // a b is a variable, not a 6
+  assert.equal(interpretInk([['x^2-5x+6=0']]).answer, 'x = 2, 3');
+  assert.equal(interpretInk([['3x+2=2x+5']]).answer, 'x = 3'); // "=" inside an equation isn't an answer
+  assert.equal(interpretInk([['x+y=2']]).status, 'solve'); // two unknowns: the model
   assert.equal(interpretInk([['hello']]).status, 'unknown');
 });
 

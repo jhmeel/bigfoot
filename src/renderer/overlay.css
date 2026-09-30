@@ -125,6 +125,26 @@ body.selecting #select-layer { pointer-events: auto; cursor: crosshair; backgrou
 @keyframes lasso-in { from { opacity: 0; } }
 @keyframes lasso-scan { to { stroke-dashoffset: -960; } }
 
+#region-ask {
+  position: fixed; z-index: 30; display: flex; align-items: center; gap: 4px; width: 340px; max-width: calc(100vw - 32px);
+  padding: 5px 5px 5px 14px; border-radius: 22px; background: rgba(22, 24, 29, 0.96);
+  border: 1px solid rgba(120, 170, 255, 0.45); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 0 4px rgba(51, 128, 255, 0.12);
+  animation: lasso-in 200ms var(--ease);
+}
+#region-ask[hidden] { display: none; }
+#region-ask input {
+  flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: #f2f4f8;
+  font: 400 14px/1.4 var(--font);
+}
+#region-ask input::placeholder { color: rgba(242, 244, 248, 0.5); }
+#region-ask button {
+  display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 50%;
+  background: transparent; color: rgba(242, 244, 248, 0.7); cursor: pointer;
+}
+#region-ask button[type="submit"] { background: #3380ff; color: #fff; }
+#region-ask button:hover { filter: brightness(1.15); }
+#region-ask svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
 /* ---------------------------------------------------------------- math tool */
 #math-layer { position: fixed; inset: 0; display: none; }
 body.math #math-layer { display: block; pointer-events: auto; cursor: crosshair; background: rgba(6, 10, 20, 0.28); }

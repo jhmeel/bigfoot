@@ -34,7 +34,11 @@ function tokenize(src) {
   let m;
   while (re.lastIndex < src.length && (m = re.exec(src))) {
     if (m[1] !== undefined) tokens.push({ t: 'num', v: Number(m[1] + (m[2] !== undefined ? `e${m[2]}` : '')) });
-    else if (m[3] !== undefined) tokens.push({ t: 'id', v: m[3].toLowerCase() });
+    else if (m[3] !== undefined) {
+      const id = m[3].toLowerCase();
+      if (id in FUNCS || id in CONSTS || id.length === 1) tokens.push({ t: 'id', v: id });
+      else for (const ch of id) tokens.push({ t: 'id', v: ch }); // "xy" is x times y
+    }
     else if (m[4] !== undefined) {
       if (!'+-*/^()!%|'.includes(m[4])) throw new MathError(`Unexpected "${m[4]}"`);
       tokens.push({ t: 'op', v: m[4] });
@@ -43,7 +47,7 @@ function tokenize(src) {
   return tokens;
 }
 
-function parse(src) {
+function parse(src, vars = {}) {
   const tokens = tokenize(src);
   let i = 0;
   const peek = () => tokens[i];
@@ -101,6 +105,7 @@ function parse(src) {
     if (t.t === 'op' && t.v === '|') { i++; const v = expr(); take('|'); return Math.abs(v); }
     if (t.t === 'id') {
       i++;
+      if (t.v in vars) return vars[t.v];
       if (t.v in CONSTS) return CONSTS[t.v];
       if (t.v in FUNCS) return FUNCS[t.v](isOp('(') ? primary() : power());
       throw new MathError(`Unknown name "${t.v}"`);
@@ -133,4 +138,80 @@ function evaluate(text) {
   return { expression, value, text: format(value) };
 }
 
-module.exports = { evaluate, normalize, format, parse, MathError };
+const unknowns = (expression) => [...new Set(tokenize(expression.replace(/=/g, '+'))
+  .filter((t) => t.t === 'id' && !(t.v in FUNCS) && !(t.v in CONSTS)).map((t) => t.v))];
+
+/** 2.333… shows as 7/3; anything else as a decimal. */
+function nice(v) {
+  if (Math.abs(v - Math.round(v)) < 1e-9) return format(Math.round(v));
+  for (let d = 2; d <= 16; d++) {
+    const n = Math.round(v * d);
+    if (Math.abs(v * d - n) < 1e-9) return `${n}/${d}`;
+  }
+  return format(Number(v.toPrecision(10)));
+}
+
+/**
+ * Solve an equation in one unknown: linear and quadratic exactly, anything else numerically.
+ * @returns {{ expression, variable, roots: number[], text }}
+ */
+function solveEquation(text) {
+  const expression = normalize(text);
+  const sides = expression.split('=');
+  if (sides.length !== 2 || !sides[0].trim() || !sides[1].trim()) throw new MathError('Not an equation');
+  const names = unknowns(expression);
+  if (names.length !== 1) throw new MathError(names.length ? 'More than one unknown' : 'No unknown');
+  const [v] = names;
+  const f = (x) => {
+    try { return parse(sides[0], { [v]: x }) - parse(sides[1], { [v]: x }); } catch (err) {
+      if (err instanceof MathError && /Division|large|Factorial/.test(err.message)) return NaN;
+      throw err;
+    }
+  };
+  f(0.123); // throws on anything that can't be parsed
+
+  const [fm, f0, fp] = [f(-1), f(0), f(1)];
+  const a = (fp + fm) / 2 - f0;
+  const b = (fp - fm) / 2;
+  const c = f0;
+  const fits = [2, 3, -2.5, 0.5, 7].every((x) => {
+    const got = f(x);
+    return Number.isFinite(got) && Math.abs(got - (a * x * x + b * x + c)) <= 1e-7 * Math.max(1, Math.abs(got));
+  });
+  const tiny = (n) => Math.abs(n) < 1e-12;
+  let roots;
+  if (fits && tiny(a)) {
+    if (tiny(b)) return { expression, variable: v, roots: [], text: tiny(c) ? 'any value' : 'no solution' };
+    roots = [-c / b];
+  } else if (fits) {
+    const disc = b * b - 4 * a * c;
+    if (disc < -1e-12) return { expression, variable: v, roots: [], text: 'no real solution' };
+    const r = Math.sqrt(Math.max(0, disc));
+    roots = tiny(r) ? [-b / (2 * a)] : [(-b - r) / (2 * a), (-b + r) / (2 * a)];
+  } else {
+    roots = [];
+    const step = 0.05;
+    let px = -200;
+    let py = f(px);
+    for (let x = px + step; x <= 200 && roots.length < 4; x += step) {
+      const y = f(x);
+      if (Number.isFinite(py) && Number.isFinite(y) && Math.sign(py) !== Math.sign(y)) {
+        let lo = px;
+        let hi = x;
+        for (let k = 0; k < 60; k++) {
+          const mid = (lo + hi) / 2;
+          if (Math.sign(f(mid)) === Math.sign(f(lo))) lo = mid; else hi = mid;
+        }
+        const root = (lo + hi) / 2;
+        if (Math.abs(f(root)) < 1e-6) roots.push(root); // a sign change at a pole isn't a root
+      }
+      px = x;
+      py = y;
+    }
+    if (!roots.length) throw new MathError('No solution found');
+  }
+  roots = roots.map((r) => (Object.is(r, -0) ? 0 : r)).sort((p, q) => p - q);
+  return { expression, variable: v, roots, text: `${v} = ${roots.map(nice).join(', ')}` };
+}
+
+module.exports = { evaluate, normalize, format, parse, solveEquation, unknowns, MathError };

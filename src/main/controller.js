@@ -31,6 +31,7 @@ class Controller {
     this.recordingStartedAt = 0;
     this.selecting = null;      // null | 'ptt' | 'panel'
     this.pendingRegion = null;  // { displayId, x, y, width, height } in display-local dip
+    this.regionAsking = null;   // display showing the ask box next to the marked area
     this.wakeActive = false;
     this.replyTimer = null;
   }
@@ -204,6 +205,7 @@ class Controller {
 
   onEsc() {
     if (this.agent.running) { this.stopTask(); return; }
+    if (this.regionAsking != null) { this.clearRegion(); return; }
     if (this.voiceMode) { this.setVoiceMode(false); return; }
     if (this.ink) { this.stopInk(); return; }
     if (this.selecting === 'panel') { this.setSelecting(null); this.clearRegion(); return; }
@@ -310,6 +312,7 @@ class Controller {
   }
 
   clearRegion() {
+    this.endRegionAsk();
     this.pendingRegion = null;
     this.windows.broadcast('region', null);
     this.windows.send(this.windows.panel, 'region', null);
@@ -329,6 +332,8 @@ class Controller {
     const points = Array.isArray(rect.points)
       ? rect.points.slice(0, 400).filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y))
       : null;
+    clearTimeout(this.regionFade);
+    this.endRegionAsk();
     this.pendingRegion = { displayId, x: rect.x, y: rect.y, width: rect.width, height: rect.height, points };
     for (const [id, w] of this.windows.overlays) if (id !== displayId) this.windows.send(w, 'region', null);
     this.activity.add('info', `Area selected: ${Math.round(rect.width)}×${Math.round(rect.height)} at (${Math.round(rect.x)}, ${Math.round(rect.y)}).`);
@@ -338,11 +343,26 @@ class Controller {
     }
   }
 
+  /** Ask right next to the marked area: a small box on the overlay, or just speak in Talk mode. */
   promptForRegionQuestion() {
     if (!this.pendingRegion) return;
-    this.windows.broadcast('region', { ...this.pendingRegion });
-    this.windows.send(this.windows.panel, 'region', { width: this.pendingRegion.width, height: this.pendingRegion.height });
-    this.windows.showPanel();
+    const id = this.pendingRegion.displayId;
+    const ask = !this.voiceMode;
+    this.windows.broadcast('region', { ...this.pendingRegion, ask });
+    if (ask) {
+      this.regionAsking = id;
+      this.windows.setOverlaysInteractive(true, id);
+      this.windows.setOverlayFocus(id, true);
+    } else this.bubble('what about it?', 2500);
+  }
+
+  endRegionAsk() {
+    const id = this.regionAsking;
+    if (id == null) return;
+    this.regionAsking = null;
+    if (this.ink && this.ink.displayId === id) return; // drawing keeps the overlay
+    this.windows.setOverlaysInteractive(Boolean(this.selecting), id);
+    this.windows.setOverlayFocus(id, false);
   }
 
   /**
@@ -514,6 +534,7 @@ class Controller {
     if (this.state === 'responding') this.finishReply();
 
     const region = this.pendingRegion;
+    this.endRegionAsk();
     this.pendingRegion = null;
     this.windows.send(this.windows.panel, 'region', null);
     const wanted = region ? region.displayId : this.ink ? this.ink.displayId : null;
@@ -533,6 +554,9 @@ class Controller {
         points: region.points && region.points.length > 2 ? region.points.map((p) => [p.x * sx, p.y * sy]) : null,
       };
       this.windows.broadcast('region', { ...region, analyzing: true });
+      // The screenshot doesn't include the overlay; the mark only needs to show the question was taken.
+      clearTimeout(this.regionFade);
+      this.regionFade = setTimeout(() => this.windows.broadcast('region', null), 1600);
     }
 
     this.streamed = '';
@@ -557,7 +581,7 @@ class Controller {
       this.showError(toUserError(err));
       return { ok: false };
     } finally {
-      if (region) this.windows.broadcast('region', null);
+      if (region && !this.pendingRegion) { clearTimeout(this.regionFade); this.windows.broadcast('region', null); }
       this.setInkBusy(false);
     }
   }
@@ -570,6 +594,15 @@ class Controller {
     this.audio.feedStream(clean); // speak each sentence as soon as it's complete
     this.windows.send(this.windows.panel, 'log-live', { text: clean });
     this.windows.broadcast('bubble-live', { text: clean, displayId: this.agent.target ? this.agent.target.display.id : null });
+  }
+
+  /** The model's last words were a plan it's now being told to carry out: take them back. */
+  discardStream() {
+    this.streamed = '';
+    this.audio.stopSpeaking();
+    this.audio.beginStream();
+    this.windows.send(this.windows.panel, 'log-live', { text: '' });
+    this.windows.broadcast('bubble-live', { text: '' });
   }
 
   /** Warm the local model's cache so the first request only has to read the new screenshot and words. */

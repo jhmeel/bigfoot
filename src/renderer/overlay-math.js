@@ -72,6 +72,29 @@
     });
   }
 
+  /** On the same line and close enough that a sign between them joins them into one expression. */
+  function sameLine(a, b) {
+    const overlap = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+    const gap = Math.max(a.x0, b.x0) - Math.min(a.x1, b.x1);
+    return gap < GROUP_GAP * 1.6 && overlap > -GROUP_GAP * 0.4;
+  }
+
+  /** "0", then "100", then "×" between them: one expression, not three. */
+  function joinNeighbours(grp) {
+    for (let again = true; again;) {
+      again = false;
+      for (const other of groups) {
+        if (other === grp || !sameLine(grp.box, other.box)) continue;
+        grp.strokes = [...other.strokes, ...grp.strokes]; // the newest stroke stays last, for undo
+        grp.box = boxOf(grp.strokes);
+        removeGroup(other);
+        again = true;
+        break;
+      }
+    }
+    groups = [...groups.filter((g) => g !== grp), grp]; // undo takes from the one just written
+  }
+
   // ---------------------------------------------------------------- answers and live reading
   function place(grp) {
     if (!grp.el) {
@@ -166,7 +189,8 @@
     const res = grp.result;
     switch (res && res.status) {
       case 'writing':
-      case 'answer': showAnswer(grp, { state: 'done', text: res.answer, title: res.expression }); return;
+      case 'answer':
+      case 'solved': showAnswer(grp, { state: 'done', text: res.answer, title: res.expression }); return;
       case 'right': showAnswer(grp, { state: 'right', text: '✓', title: 'Correct' }); return;
       case 'wrong': showAnswer(grp, { state: 'wrong', text: res.answer, title: `That's ${res.answer}, not ${res.given}` }); return;
       default: break;
@@ -222,6 +246,7 @@
     drawing = null;
     group.strokes.push(points);
     group.box = boxOf(group.strokes);
+    joinNeighbours(group);
     redraw();
     schedule(group);
   };
@@ -249,7 +274,7 @@
   document.getElementById('math-clear').addEventListener('click', clearAll);
   document.getElementById('math-done').addEventListener('click', () => api.invoke('ink:stop'));
   window.addEventListener('keydown', (e) => {
-    if (!active) return;
+    if (!active || e.target.closest('input, textarea')) return;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
     if (e.key === 'Delete' || e.key === 'Backspace') clearAll();
     if (e.key === 'Enter') groups.forEach(solve);

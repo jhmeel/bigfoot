@@ -119,33 +119,35 @@ class AudioService extends EventEmitter {
   // ---------------------------------------------------------------- speaking a reply as it's written
   /** Start a reply that arrives in pieces. */
   beginStream() {
-    this.stream = { spoken: 0, said: '', queue: Promise.resolve('none'), used: 'none' };
+    this.stream = { heard: new Set(), queue: Promise.resolve('none'), used: 'none' };
   }
 
   /** The reply so far: speak every sentence that's now complete and not spoken yet. */
   feedStream(text) {
-    const s = this.stream;
-    if (!s || !this.settings.get('speakResponses')) return;
-    // A new message (the AI acted, then wrote its answer): start counting from its beginning.
-    if (!text.startsWith(s.said || '')) s.spoken = 0;
-    s.said = text.slice(0, s.spoken);
-    const pending = text.slice(s.spoken);
-    const m = /^([\s\S]*[.!?…:;](?=\s)|[\s\S]*\n)/.exec(pending); // up to the last finished sentence
-    if (!m || !m[1].trim()) return;
-    s.spoken += m[1].length;
-    s.said = text.slice(0, s.spoken);
-    this.enqueue(s, m[1]);
+    if (!this.stream || !this.settings.get('speakResponses')) return;
+    this.say(sentences(text, false));
   }
 
   /** The whole reply: speak what's left. Resolves when everything has been said, to the voice used. */
   finishStream(text) {
     const s = this.stream;
     if (!s) return this.speak(text);
-    text = String(text);
-    // Only continue where speech left off if this is the same message; otherwise say it all.
-    const rest = s.said && text.startsWith(s.said) ? text.slice(s.spoken) : text;
-    if (rest.trim() && this.settings.get('speakResponses')) this.enqueue(s, rest);
+    if (this.settings.get('speakResponses')) this.say(sentences(String(text), true));
     return s.queue.then(() => (this.stream === s ? s.used : 'none'));
+  }
+
+  /**
+   * Each sentence is spoken once, even if the text around it changes between the streamed version
+   * and the final reply (a removed [POINT] tag, different spacing, a message that starts over).
+   */
+  say(list) {
+    const s = this.stream;
+    for (const sentence of list) {
+      const key = sentence.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+      if (!key || s.heard.has(key)) continue;
+      s.heard.add(key);
+      this.enqueue(s, sentence);
+    }
   }
 
   enqueue(s, sentence) {
@@ -158,4 +160,23 @@ class AudioService extends EventEmitter {
   }
 }
 
-module.exports = { AudioService };
+/**
+ * Split text into sentences. With complete=false the last piece is left out unless it clearly ends
+ * (". " etc.), because it may still be growing; "3.5" or "e.g." mid-number isn't an ending.
+ */
+function sentences(text, complete) {
+  const out = [];
+  const re = /[\s\S]*?(?:[.!?…]+(?=\s|$)|\n+)/g;
+  let m;
+  let end = 0;
+  while ((m = re.exec(text)) && m[0]) {
+    if (!complete && m.index + m[0].length === text.length && !/\n$/.test(m[0])) break; // may still grow
+    if (m[0].trim()) out.push(m[0].trim());
+    end = m.index + m[0].length;
+  }
+  const rest = text.slice(end).trim();
+  if (complete && rest) out.push(rest);
+  return out;
+}
+
+module.exports = { AudioService, sentences };

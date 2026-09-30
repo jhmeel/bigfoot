@@ -1,4 +1,4 @@
-# Bigfoot 1.1 — Technical report
+# Bigfoot 1.2.1 — Technical report
 
 Scope: the move to an on-device AI (Qwen3-VL) as the default model, the tool tray, Draw and Math,
 continuous voice (Talk), the plugin validator, onboarding and settings changes, and the installer.
@@ -154,6 +154,15 @@ memory stays flat and the microphone isn't reopened. Talk ends on the Talk butto
 listening"/"that's all"/"goodbye". Hands-free listening never captures the mouse; only hold-to-talk
 enables drag-to-highlight.
 
+Replies are spoken sentence by sentence while they stream. Each sentence is keyed by its letters and
+digits and spoken at most once per request, so the final reply (with tags removed and spacing
+changed) can't repeat what streaming already said. When the local model describes a plan instead of
+acting ("I'll open Chrome and search…"), the agent discards that text, including the speech queue
+and the live chat message, and asks it to call the tools, at most twice per request. The system
+prompt also tells it directly how to search (open_url with a Google query) and how to draw
+(edit_drawing with a picture). Paths like `C:\Users\YourUsername\…` that a model invents are
+mapped to the real home folder.
+
 ## 5. Tool tray, Draw, and Math
 
 - **Tray trigger**: a low-level mouse hook in the native helper recognizes physical (not injected)
@@ -172,7 +181,10 @@ enables drag-to-highlight.
   and shapes, erases a region, or clears; edits are recorded in the user's undo history. During a
   request the overlay passes clicks through so the AI's actions reach the apps below. Verified live:
   a hand-drawn stroke appeared in the model's screenshot and zoom, and the tool erased it and drew a
-  clean labelled ellipse.
+  clean labelled ellipse. For requests like "draw a bird", `edit_drawing` has a `picture` shape
+  backed by a library of 23 line drawings (`plugins/lib/pictures.js`, unit-square strokes fitted
+  into the requested box, or the middle of the screen). Small models can't trace a recognizable
+  picture point by point, so they name the subject instead.
 - **Math** (`overlay-math.js`, `mathink.js`, `math.js`): strokes are grouped into expressions by
   proximity and read 0.2 s after the pen lifts by Windows' handwriting recognizer (WinRT
   `InkRecognizerContainer`, called from the native helper on its own MTA thread; 27–177 ms). The best
@@ -180,8 +192,18 @@ enables drag-to-highlight.
   numbers → ×), and the clean reading is shown under the ink. Answers wait for **Solve** (per
   expression, Solve all, or Enter), since "=" alone can't tell a sum from an equation: sums are computed
   exactly by a recursive-descent evaluator (no `eval`), an answer the user wrote is checked (✓ or
-  corrected), and anything with a letter goes to the AI model. Verified live: "7+5=" drawn on the
-  overlay was read correctly and computed as 12.
+  corrected), and equations with one unknown are solved locally (`solveEquation` in `math.js`:
+  f(v) = left − right is sampled; linear and quadratic are solved exactly, with fractions shown as
+  fractions, and anything else by sign-change bisection over ±200). Only equations the solver can't
+  handle go to the AI model. Letters that are commonly variables (b, q, z, s, t…) are no longer
+  turned into digits, which had made "2b + 1 = 7" read as "26 + 1 = 7". A stroke that lands between
+  two expressions on the same line joins them. Verified live: "7+5=" drawn on the overlay was read
+  correctly and computed as 12.
+- **Asking about an area**: the lasso opens a small ask box on the overlay next to the area (the
+  overlay takes focus only while the box is open). Earlier builds opened the main window for the
+  question; that window then sat on top of the screen being asked about. In Talk mode the question
+  is simply spoken. The mark fades 1.6 s after the question is sent, since screenshots never include
+  the overlay anyway.
 - **Home**: a chat (user bubbles, assistant replies streaming in, a quiet list of actions). The window
   stays open while chatting and minimizes only when the AI starts using the mouse or keyboard.
 
@@ -229,7 +251,7 @@ runs Bigfoot when done. Additions in this release:
 
 ## 9. Verification
 
-`npm test`: 45 tests across five suites, all passing.
+`npm test`: 48 tests across five suites, all passing.
 
 | Suite | Covers |
 |---|---|

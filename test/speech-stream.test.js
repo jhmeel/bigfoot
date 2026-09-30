@@ -42,3 +42,20 @@ test('a new message after an action starts over; stopping drops what is queued',
   await new Promise((r) => setImmediate(r));
   assert.deepEqual(b.said, []);
 });
+
+test('the final reply never repeats what was already spoken', async () => {
+  const a = audio();
+  a.beginStream();
+  a.feedStream('Opening Chrome now.\nHere it is . ');
+  await a.finishStream('Opening Chrome now.  Here it is.');
+  assert.deepEqual(a.said, ['Opening Chrome now.', 'Here it is .']);
+});
+
+test('placeholder user folders point at the real home', () => {
+  const os = require('os');
+  const path = require('path');
+  const { resolvePath } = require('../src/main/plugins/lib/paths');
+  assert.equal(resolvePath('C:\\Users\\YourUsername\\Desktop\\a.txt'), path.join(os.homedir(), 'Desktop', 'a.txt'));
+  assert.equal(resolvePath('C:\\Users\\<user>\\Documents'), path.join(os.homedir(), 'Documents'));
+  assert.equal(resolvePath('C:\\Users\\Public\\x'), 'C:\\Users\\Public\\x');
+});

@@ -24,6 +24,18 @@ function extractPoint(text) {
 
 const pngItem = (png) => ({ type: 'image', data: png.toString('base64') });
 
+/**
+ * A reply that announces actions without taking any: "I'll use open_url to…", "Let me open…",
+ * "First, I'll…". A plain answer or a question back to the user isn't a plan.
+ */
+function isPlanInsteadOfAction(text) {
+  const t = String(text || '');
+  if (!t.trim() || /\?\s*$/.test(t.trim())) return false;
+  const intent = /\b(I['’]?ll|I will|let me|I['’]?m going to|I am going to|first,? I|I can (?:help you )?(?:do|open|search|click|type|draw|use)|I need to (?:open|use|click|take))\b/i;
+  const tooling = /\b(open_app|open_url|annotate|edit_drawing|run_command|screenshot|the \w+ (?:tool|function)|open (?:a |the )?(?:new )?(?:tab|browser|app|chrome|notepad|window)|search|click|type|draw)\b/i;
+  return intent.test(t) && tooling.test(t);
+}
+
 class Agent {
   /**
    * @param {object} deps
@@ -162,6 +174,7 @@ class Agent {
 
   async loop(provider, signal) {
     const maxTurns = this.settings.get('maxTurns');
+    let nudges = 0;
     for (let turn = 0; turn < maxTurns; turn++) {
       this.hooks.state('processing');
       const step = await provider.step(signal, (msg) => this.hooks.terminal('info', msg));
@@ -178,6 +191,14 @@ class Agent {
       if (!step.calls.length) {
         if (step.stop === 'max_tokens') {
           provider.addUserMessage('Your last response was cut off by the length limit. Continue.');
+          continue;
+        }
+        // A plan with no tool call ("I'll open Chrome, then…"): have the model do it instead.
+        if (provider.id === 'local' && nudges < 2 && isPlanInsteadOfAction(step.text)) {
+          nudges++;
+          if (this.hooks.discard) this.hooks.discard(); // don't keep or speak the narration
+          this.hooks.terminal('info', 'The model described a plan instead of acting; asking it to act.');
+          provider.addUserMessage('Don’t describe it: do it now by calling the tools. At most one short sentence of text.');
           continue;
         }
         const { text, point } = extractPoint(step.text);
@@ -314,4 +335,4 @@ function toUserError(err) {
   return new AgentError(err && err.message ? err.message : String(err));
 }
 
-module.exports = { Agent, AgentError, extractPoint, toUserError };
+module.exports = { Agent, AgentError, extractPoint, toUserError, isPlanInsteadOfAction };

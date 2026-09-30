@@ -78,15 +78,24 @@ other tool, so you can draw and say "neaten my circle", then "add an arrow to it
 line, arrow, rectangle, and ellipse (Shift constrains), eight colors, four sizes, undo/redo, and
 clear. **Pointer** keeps the drawing on screen while your clicks go to your apps. Drag the toolbar by
 its grip. The AI sees your drawing and can change it: ask it to correct, neaten, label, or improve
-it, and its edits land in your drawing, where Undo works on them.
+it, and its edits land in your drawing, where Undo works on them. Ask it to draw something ("draw a
+bird", "a heart here") and it draws a clean picture from its built-in library (bird, heart, star,
+smiley, sun, house, tree, flower, cat, fish, cloud, moon, car, boat, mountain, apple, balloon,
+butterfly, person, arrow, check, cross, question mark).
 Shortcuts: V P H B E L A R O for tools, 1–8 for colors, [ ] for size, Ctrl+Z / Ctrl+Y, Delete to
 clear, Esc to close.
 
 **Math**: write math anywhere on the screen. Windows' handwriting recognizer reads it in a fraction
 of a second and shows the clean reading underneath, so a misread is obvious at once. Press **Solve**
-next to an expression (or **Solve all**, or Enter): sums are computed exactly by Bigfoot, a sum with
-your own answer is checked (✓, or the right answer), and equations with a letter, like
-2x + 1 = 7, are solved by the AI model.
+next to an expression (or **Solve all**, or Enter). "=" never means "answer" by itself: sums are
+computed exactly, a sum with your own answer (12 + 7 = 19) is checked (✓, or the right answer), and
+equations with one unknown, such as 2x + 1 = 7, 3x + 2 = 2x + 5, or x² − 5x + 6 = 0, are solved on
+your PC in an instant. Only harder ones (two unknowns) go to the AI model. Numbers written with gaps
+("0", then "100", then "×" between them) join into one expression.
+
+**Point** (or Ctrl + Alt and drag): circle part of the screen and a small box appears right beside
+it. Type your question and press Enter, or just speak if Talk is on. The Bigfoot window stays where
+it is, and the mark fades once the question is taken.
 
 The Home window is a chat with Bigfoot. It stays open while you chat and steps aside only when
 Bigfoot starts using the mouse or keyboard.
