@@ -15,7 +15,7 @@ const INVOKE = new Set([
   'plugins:list', 'plugins:pick', 'plugins:install', 'plugins:remove',
 ]);
 const SEND = new Set([
-  'overlay:ready', 'overlay:fly-done', 'overlay:region', 'panel:ready',
+  'overlay:ready', 'overlay:fly-done', 'overlay:region', 'overlay:region-ask', 'panel:ready',
   'engine:ready', 'engine:reply', 'engine:level', 'engine:vad', 'ink:passthrough', 'ink:reply', 'ink:state',
 ]);
 const RECEIVE = new Set([

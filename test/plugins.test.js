@@ -76,3 +76,22 @@ test('installing and removing a plugin updates the tools and the list', async ()
   assert.ok(!registry.has('greet_user'));
   assert.deepEqual(pm.list().custom, []);
 });
+
+test('edit_drawing draws ready pictures from a subject', async () => {
+  const drawing = require('../src/main/plugins/builtin/drawing');
+  const { pictureName } = require('../src/main/plugins/lib/pictures');
+  assert.equal(pictureName('a bird'), 'bird');
+  assert.equal(pictureName('smiley face'), 'smiley');
+  assert.equal(pictureName('a flying dragon'), null);
+  const ops = [];
+  const ctx = {
+    screen: { sentToLocalDip: ([x, y]) => ({ x, y }), display: { bounds: { width: 1000, height: 800 } } },
+    ink: async (op) => { ops.push(op); return true; },
+  };
+  const said = await drawing.run({ action: 'add', shape: 'picture', subject: 'bird' }, ctx);
+  assert.equal(said, 'Drew a bird.');
+  assert.ok(ops.length > 4 && ops.every((o) => o.op === 'add' && o.stroke.points.length >= 2));
+  const xs = ops.flatMap((o) => o.stroke.points.map((p) => p.x));
+  assert.ok(Math.min(...xs) >= 372 && Math.max(...xs) <= 628); // centered, fitted in the default box
+  await assert.rejects(drawing.run({ action: 'add', shape: 'picture', subject: 'dragon' }, ctx), /No ready picture/);
+});

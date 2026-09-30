@@ -176,6 +176,10 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
 
   // ---- fire-and-forget messages from renderers
   ipcMain.on('overlay:region', (event, rect) => controller.onRegionSelected(windows.displayIdOf(event.sender), rect));
+  ipcMain.on('overlay:region-ask', (_e, text) => {
+    if (typeof text === 'string' && text.trim()) controller.runTask(text.slice(0, 4000), 'typed');
+    else controller.clearRegion();
+  });
   ipcMain.on('overlay:ready', (event) => {
     event.sender.send('state', controller.state);
     event.sender.send('settings', settings.publicView());

@@ -11,6 +11,11 @@ const GRID = 1000;
 const LOCAL_TIMEOUT_MS = 10 * 60 * 1000; // a first, uncached request on a slow CPU can take minutes
 const SAMPLING = { temperature: 0.2, top_p: 0.8, top_k: 20, repeat_penalty: 1.05 };
 
+// Small local models tend to describe a plan instead of carrying it out; say plainly not to.
+const ACTION_NOTE = `
+
+Acting: when the user asks you to do something, call the right tool in this same reply. Never describe what you will do, never explain how, never list steps: just call the tool. Say at most one short sentence. To search the web, call open_url with https://www.google.com/search?q= and the search words. To draw something on the screen (a bird, a heart…), call edit_drawing with action "add", shape "picture" and the subject. If the user only asks a question or chats, answer in one or two short sentences, with no lists.`;
+
 const GRID_NOTE = `
 
 Coordinates: every x,y you give (computer actions, zoom regions, annotate and edit_drawing points and regions, and [POINT] tags) is on a ${GRID}x${GRID} grid laid over the screen: [0, 0] is the top-left corner and [${GRID}, ${GRID}] the bottom-right, whatever size the screenshot is. Cursor positions you are told use the same grid.`;
@@ -25,7 +30,7 @@ const scale = (v, from, to) => Math.round(((Number(v) / from) * to) * 10) / 10;
 
 class LocalProvider extends OpenAIProvider {
   constructor({ runtime, model, label, system, tools, screen }) {
-    super({ apiKey: '', model, system: system + GRID_NOTE, tools, screen, computer: localComputerFunction() });
+    super({ apiKey: '', model, system: system + ACTION_NOTE + GRID_NOTE, tools, screen, computer: localComputerFunction() });
     this.id = 'local';
     this.label = label || 'Local AI';
     this.runtime = runtime;
@@ -230,4 +235,4 @@ async function askLocal(runtime, { prompt, image, maxTokens = 300, signal }) {
   }));
 }
 
-module.exports = { LocalProvider, askLocal, readStream, GRID, GRID_NOTE, localComputerFunction };
+module.exports = { LocalProvider, askLocal, readStream, GRID, GRID_NOTE, ACTION_NOTE, localComputerFunction };

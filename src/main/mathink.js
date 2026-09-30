@@ -5,7 +5,7 @@ const llm = require('./llm');
 const { askLocal } = require('./llm/local');
 const anthropic = require('./llm/anthropic');
 const openai = require('./llm/openai');
-const { evaluate, normalize } = require('./math');
+const { evaluate, normalize, solveEquation } = require('./math');
 
 const PROMPT = `This image is handwriting on a digital whiteboard. Read the math the person wrote.
 Reply with JSON only, no other text:
@@ -36,7 +36,8 @@ function resolveAnswer({ expression, answer }) {
 
 // ---------------------------------------------------------------- live handwriting (Windows recognizer)
 
-const DIGIT_LOOKALIKES = { l: '1', I: '1', '|': '1', i: '1', O: '0', o: '0', D: '0', S: '5', s: '5', Z: '2', z: '2', B: '8', g: '9', q: '9', b: '6', T: '7' };
+// Only shapes that are rarely a variable; b, q, z, t, s… stay letters so "2b + 1 = 7" is an equation.
+const DIGIT_LOOKALIKES = { l: '1', I: '1', '|': '1', O: '0', o: '0', S: '5', Z: '2', B: '8' };
 const pretty = (s) => s.replace(/\*/g, '×').replace(/\//g, '÷').replace(/\s*([+\-×÷=])\s*/g, ' $1 ').replace(/\s+/g, ' ').trim();
 
 /** The recognizer's readings, best first: every mix of the top few candidates per segment. */
@@ -52,7 +53,7 @@ function readings(segments, perSegment = 4, max = 64) {
 
 /** Letters that are usually digits in handwriting, swapped only where they sit among numbers. */
 function digitize(text) {
-  return text.replace(/[lIi|ODoSsZzBgqbT]/g, (ch, at, s) => {
+  return text.replace(/[lI|OoSZB]/g, (ch, at, s) => {
     const around = `${s[at - 1] || ''}${s[at + 1] || ''}`;
     return /[\d+\-*/×÷=().\s]/.test(around) || !around ? DIGIT_LOOKALIKES[ch] : ch;
   });
@@ -62,11 +63,15 @@ function tryEvaluate(text) {
   try { return evaluate(text); } catch { return null; }
 }
 
+function trySolve(text) {
+  try { return solveEquation(text); } catch { return null; }
+}
+
 /**
  * Understand what was written.
  * @returns {{ text, status, answer?, given?, expression? }} status is one of
  *   'writing' (a sum, no "="), 'answer' (a sum ending with "="), 'right' / 'wrong' (the user's own
- *   answer checked), 'solve' (has a variable: the model is needed), 'unknown'.
+ *   answer checked), 'solved' (one unknown, solved here), 'solve' (needs the model), 'unknown'.
  * Nothing is shown until the user presses Solve; this only prepares the answer.
  */
 function interpretInk(segments) {
@@ -84,6 +89,10 @@ function interpretInk(segments) {
       const left = text.slice(0, eq);
       const right = text.slice(eq + 1).replace(/=/g, '');
       const lhs = tryEvaluate(left);
+      if (right && (!lhs || !tryEvaluate(right))) {
+        const sol = trySolve(text);
+        if (sol) return { text: pretty(sol.expression), status: 'solved', answer: sol.text, expression: sol.expression };
+      }
       if (lhs && !right) return { text: `${pretty(lhs.expression)} =`, status: 'answer', answer: lhs.text, expression: lhs.expression };
       if (lhs) {
         const given = tryEvaluate(right);

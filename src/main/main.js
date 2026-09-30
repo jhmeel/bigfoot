@@ -105,6 +105,7 @@ async function start() {
       draw: (shape) => windows.send(windows.overlayFor(shape.displayId), 'annotate', shape),
       ink: (op) => controller.editInk(op),
       stream: (text) => controller.streamReply(text),
+      discard: () => controller.discardStream(),
       markImage: async (png, points) => Buffer.from(await audio.call('mark-image', { png, points }, 15000)),
     },
   });

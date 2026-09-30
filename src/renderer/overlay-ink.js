@@ -408,7 +408,7 @@
 
   // ---------------------------------------------------------------- keyboard (the overlay has focus while drawing)
   window.addEventListener('keydown', (e) => {
-    if (!active) return;
+    if (!active || e.target.closest('input, textarea')) return;
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
     if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); return; }

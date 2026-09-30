@@ -10,6 +10,11 @@
   <div id="select-layer"></div>
   <svg id="draw" width="100%" height="100%"></svg>
   <div id="labels"></div>
+  <form id="region-ask" hidden autocomplete="off">
+    <input id="region-ask-input" type="text" placeholder="Ask about this area…" spellcheck="true" aria-label="Ask about the marked area">
+    <button type="submit" title="Ask (Enter)" aria-label="Ask"><svg viewBox="0 0 20 20"><path d="M10 16V4M5 9l5-5 5 5"/></svg></button>
+    <button type="button" id="region-ask-close" title="Cancel (Esc)" aria-label="Cancel"><svg viewBox="0 0 20 20"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></svg></button>
+  </form>
   <div id="stage">
     <div id="buddy" aria-hidden="true">
       <div id="buddy-fx">

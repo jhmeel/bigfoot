@@ -309,6 +309,7 @@
   // A reply that's still being written: update it in place, no typing animation.
   api.on('bubble-live', ({ text, displayId: target }) => {
     if (target != null && target !== displayId) return;
+    if (!text) { hideBubble(); return; }
     if (!onThisScreen() && mode === 'following') return;
     if (mode === 'pointing' || (mode === 'flying' && !returning)) { pendingBubble = { text, ttl: 0 }; return; }
     bubbleToken++;

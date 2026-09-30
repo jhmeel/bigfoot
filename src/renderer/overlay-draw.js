@@ -253,13 +253,43 @@
     }
   });
 
+  // ---------------------------------------------------------------- asking about the marked area
+  const askForm = document.getElementById('region-ask');
+  const askInput = document.getElementById('region-ask-input');
+
+  function showAsk(r) {
+    if (!r) { askForm.hidden = true; askInput.value = ''; return; }
+    const W = Math.min(340, innerWidth - 32);
+    const below = r.y + r.height + 12;
+    const top = below + 44 < innerHeight ? below : Math.max(12, r.y - 56);
+    askForm.style.left = `${Math.max(16, Math.min(r.x + r.width / 2 - W / 2, innerWidth - W - 16))}px`;
+    askForm.style.top = `${top}px`;
+    askForm.hidden = false;
+    setTimeout(() => askInput.focus(), 30);
+  }
+
+  askForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = askInput.value.trim();
+    if (!text) return;
+    askForm.hidden = true;
+    askInput.value = '';
+    api.send('overlay:region-ask', text);
+  });
+  askInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); showAsk(null); api.send('overlay:region-ask', ''); }
+  });
+  document.getElementById('region-ask-close').addEventListener('click', () => { showAsk(null); api.send('overlay:region-ask', ''); });
+
   api.on('region', (r) => {
     if (!r || (r.displayId != null && r.displayId !== displayId)) {
       showLasso(null);
+      showAsk(null);
       return;
     }
     const pts = r.points && r.points.length > 2 ? r.points : rectPoints(r);
     showLasso(pts, { closed: true, analyzing: Boolean(r.analyzing) });
+    showAsk(r.ask ? r : null);
   });
   api.on('annotate', annotate);
 })();

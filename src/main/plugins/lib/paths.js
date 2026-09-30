@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
@@ -14,10 +15,24 @@ function resolvePath(p) {
   let s = p.trim().replace(/^["']|["']$/g, '');
   s = s.replace(/%([^%]+)%/g, (m, v) => process.env[v] ?? m);
   if (s === '~' || s.startsWith('~/') || s.startsWith('~\\')) s = path.join(os.homedir(), s.slice(1));
+  s = fixUserFolder(s);
   const first = s.split(/[\\/]/)[0].toLowerCase();
   if (!path.isAbsolute(s) && first in KNOWN_FOLDERS) s = path.join(os.homedir(), KNOWN_FOLDERS[first], s.slice(first.length));
   if (!path.isAbsolute(s)) s = path.join(os.homedir(), s);
   return path.normalize(s);
+}
+
+const PLACEHOLDER_USER = /^(your ?user ?name|user ?name|user|you|me|<[^>]*>|\{[^}]*\}|\[[^\]]*\]|name)$/i;
+
+/** Models often write C:\Users\YourUsername\…; point that, or any user folder that doesn't exist, at the real home. */
+function fixUserFolder(s) {
+  const m = /^([a-z]:[\\/]users[\\/])([^\\/]+)(.*)$/i.exec(s);
+  if (!m) return s;
+  const home = os.homedir();
+  const name = m[2];
+  if (name.toLowerCase() === path.basename(home).toLowerCase() || /^(public|default|all users)$/i.test(name)) return s;
+  if (PLACEHOLDER_USER.test(name) || !fs.existsSync(m[1] + name)) return path.join(home, m[3]);
+  return s;
 }
 
 /** Refuse writes to system folders, drive roots, and the home folder itself, even with approval. */

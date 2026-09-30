@@ -103,6 +103,11 @@
   }
 
   function streamText(text) {
+    if (!text) { // taken back: the model was asked to act instead of describing
+      if (live) { live.row.remove(); live = null; }
+      if (running) showThinking(true);
+      return;
+    }
     showThinking(false);
     if (!live) {
       live = assistantBubble();
