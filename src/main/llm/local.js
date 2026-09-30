@@ -14,7 +14,7 @@ const SAMPLING = { temperature: 0.2, top_p: 0.8, top_k: 20, repeat_penalty: 1.05
 // Small local models tend to describe a plan instead of carrying it out; say plainly not to.
 const ACTION_NOTE = `
 
-Acting: when the user asks you to do something, call the right tool in this same reply. Never describe what you will do, never explain how, never list steps: just call the tool. Say at most one short sentence. To search the web, call open_url with https://www.google.com/search?q= and the search words. To draw something on the screen (a bird, a heart…), call edit_drawing with action "add", shape "picture" and the subject. If the user only asks a question or chats, answer in one or two short sentences, with no lists.`;
+Acting: when the user asks you to do something, call the right tool in this same reply. Never describe what you will do, never explain how, never list steps: just call the tool. Say at most one short sentence. To search the web, call open_url with https://www.google.com/search?q= and the search words. To draw something on the screen (a bird, a heart…), call edit_drawing with action "add", shape "picture" and the subject (if there is no picture of it, shape "svg" with SVG you write). To neaten the user's drawing, call edit_drawing with action "tidy". If the user only asks a question or chats, answer in one or two short sentences, with no lists.`;
 
 const GRID_NOTE = `
 

@@ -6,3 +6,4 @@ build-log.txt
 vendor/
 # compiled from InputHelper.cs by `npm run build:native` (runs before start and dist)
 src/main/native/*.exe
+src/main/plugins/lib/icons.json

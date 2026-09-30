@@ -29,7 +29,7 @@ test('the recommended model matches the hardware', () => {
   assert.equal(rtx4060.options.find((o) => o.id === 'qwen3-vl-30b').note, 'Requires more memory');
 
   const laptop = catalog.recommend({ ramGB: 7.9, vramGB: 0, dedicated: false, freeDiskGB: 174 });
-  assert.equal(laptop.pick, 'qwen3-vl-2b');
+  assert.equal(laptop.pick, 'qwen3-vl-4b');
   assert.equal(laptop.options.find((o) => o.id === 'qwen3-vl-8b').available, false);
   assert.equal(laptop.options.find((o) => o.id === 'qwen3-vl-4b').available, true);
 
@@ -137,7 +137,7 @@ test('a corrupted download is fetched again, then fails with a clear message and
   };
   const m = new LocalModelManager({ dir, settings, fetchImpl, arch: 'x64' });
   const failed = new Promise((resolve) => m.on('progress', (s) => { if (s.status === 'failed') resolve(s); }));
-  m.start('qwen3-vl-2b');
+  m.start('qwen3-vl-4b');
   const s = await failed;
   assert.equal(calls, 2); // one automatic re-download after the first checksum mismatch
   assert.match(s.message, /corrupted twice/);
@@ -163,7 +163,7 @@ test('pausing keeps the partial file and resuming continues it', async () => {
   }), { status: 200 });
   const m = new LocalModelManager({ dir, settings, fetchImpl, arch: 'x64' });
   const downloading = new Promise((resolve) => m.on('progress', (s) => { if (s.status === 'downloading' && s.bytesDone > 0) resolve(); }));
-  m.start('qwen3-vl-2b');
+  m.start('qwen3-vl-4b');
   await downloading;
   assert.equal(m.pause().status, 'paused');
   assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8')).pausedBy, 'user');
@@ -219,7 +219,7 @@ test('the AI edits the user\'s drawing in screen coordinates', async () => {
 test('a streamed answer is rebuilt exactly, text and tool calls, while the text is shown live', async () => {
   const { readStream } = require('../src/main/llm/local');
   const events = [
-    { model: 'qwen3-vl-2b', choices: [{ delta: { content: 'Opening ' } }] },
+    { model: 'qwen3-vl-4b', choices: [{ delta: { content: 'Opening ' } }] },
     { choices: [{ delta: { content: 'Notepad.' } }] },
     { choices: [{ delta: { tool_calls: [{ index: 0, id: 'c1', function: { name: 'open_', arguments: '{"na' } }] } }] },
     { choices: [{ delta: { tool_calls: [{ index: 0, function: { name: 'app', arguments: 'me":"Notepad"}' } }] } }] },
@@ -232,7 +232,7 @@ test('a streamed answer is rebuilt exactly, text and tool calls, while the text 
   const seen = [];
   const body = await readStream(res, (t) => seen.push(t));
   assert.deepEqual(seen, ['Opening ', 'Opening Notepad.']);
-  assert.equal(body.model, 'qwen3-vl-2b');
+  assert.equal(body.model, 'qwen3-vl-4b');
   assert.deepEqual(body.usage, { prompt_tokens: 900, completion_tokens: 12 });
   const msg = body.choices[0].message;
   assert.equal(msg.content, 'Opening Notepad.');
@@ -319,4 +319,26 @@ test('the model reads, the calculator answers', () => {
   assert.deepEqual(resolveAnswer({ expression: '12+7', answer: '20' }), { expression: '12+7', answer: '19', exact: true });
   assert.deepEqual(resolveAnswer({ expression: '3x + 2 = 8', answer: 'x = 2' }), { expression: '3x + 2 = 8', answer: 'x = 2', exact: false });
   assert.equal(resolveAnswer({ expression: '', answer: '5' }).answer, '');
+});
+
+test('2B is no longer offered, and an installed 2B is replaced by the recommended model', async () => {
+  assert.ok(!catalog.MODELS.some((m) => m.id === 'qwen3-vl-2b'));
+  assert.equal(catalog.recommend({ ramGB: 4, vramGB: 0, dedicated: false }).pick, 'qwen3-vl-4b'); // 4B is the floor
+
+  const dir = tmp();
+  fs.mkdirSync(path.join(dir, 'models', 'qwen3-vl-2b'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'models', 'qwen3-vl-2b', 'old.gguf'), 'x');
+  const values = { localModel: 'qwen3-vl-2b' };
+  const settings = { get: (k) => values[k], update: (p) => Object.assign(values, p) };
+  const fetchImpl = async (_url, { signal }) => new Response(new ReadableStream({
+    start(ctrl) { signal.addEventListener('abort', () => ctrl.error(Object.assign(new Error('aborted'), { name: 'AbortError' }))); },
+  }), { status: 200 });
+  const m = new LocalModelManager({ dir, settings, fetchImpl, arch: 'x64' });
+  const started = await m.replaceRetired(async () => ({ pick: 'qwen3-vl-4b' }));
+  assert.equal(started, 'qwen3-vl-4b');
+  assert.equal(values.localModel, '');
+  assert.ok(!fs.existsSync(path.join(dir, 'models', 'qwen3-vl-2b')));
+  assert.equal(m.snapshot().modelId, 'qwen3-vl-4b');
+  await m.cancel();
+  assert.equal(await m.replaceRetired(async () => ({ pick: 'qwen3-vl-4b' })), null); // only once
 });

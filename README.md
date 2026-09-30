@@ -23,10 +23,13 @@ The last setup step checks your GPU, memory, and disk and recommends a Qwen3-VL 
 
 | Size | Download | Good for |
 |---|---|---|
-| 2B | ~1.5 GB | Laptops without a graphics card, 8 GB RAM |
-| 4B | ~2.8 GB | 16 GB RAM, or a 4–6 GB graphics card |
+| 4B | ~2.8 GB | The minimum: laptops without a graphics card (8 GB RAM or more), 4–6 GB graphics cards |
 | 8B | ~5.4 GB | 8 GB graphics cards (e.g. RTX 4060) |
 | 30B | ~18 GB | 20 GB+ graphics cards |
+
+4B is the smallest size offered: 2B was too weak at choosing actions and tended to describe what it
+would do instead of doing it. An existing 2B install is removed and replaced with the recommended
+size automatically.
 
 You can keep using Bigfoot while it downloads; a banner in the main window shows progress with
 Pause, Resume, and Retry. Losing the connection, going offline, or quitting never restarts the
@@ -38,6 +41,7 @@ revision and checked against its SHA-256 before it's installed.
 | Qwen3-VL GGUF models (Apache-2.0) | https://huggingface.co/Qwen |
 | llama.cpp runtime b11276 (MIT) | https://github.com/ggml-org/llama.cpp/releases/tag/b11276 |
 | whisper.cpp b5130 and its English base model (MIT), bundled in the installer | https://github.com/ggml-org/whisper.cpp |
+| Tabler Icons 3.48 (MIT), bundled | https://tabler.io/icons |
 
 **Cloud models (optional).** Settings › Models can use Claude or OpenAI with your own API key.
 They need an internet connection; whenever you're offline, Bigfoot uses the model on your PC.
@@ -81,7 +85,15 @@ its grip. The AI sees your drawing and can change it: ask it to correct, neaten,
 it, and its edits land in your drawing, where Undo works on them. Ask it to draw something ("draw a
 bird", "a heart here") and it draws a clean picture from its built-in library (bird, heart, star,
 smiley, sun, house, tree, flower, cat, fish, cloud, moon, car, boat, mountain, apple, balloon,
-butterfly, person, arrow, check, cross, question mark).
+butterfly, person, arrow, check, cross, question mark), plus more than 5,000 icons from Tabler Icons
+(animals, food, transport, buildings, devices, tools, weather, sports, symbols). For anything else,
+or a colored illustration, the AI writes its own SVG (paths, circles, rectangles, polygons, with
+strokes and fills), which becomes ordinary ink you can undo or erase.
+
+**Tidy** (wand button or T): rough lines, circles, ellipses, rectangles, triangles, and diamonds
+become perfect shapes as you finish them. With Tidy off, hold the pen still for half a second at the
+end of a stroke to snap just that one. Handwriting, scribbles, and other shapes are left as drawn.
+Ask the AI to "neaten my drawing" to tidy everything at once.
 Shortcuts: V P H B E L A R O for tools, 1–8 for colors, [ ] for size, Ctrl+Z / Ctrl+Y, Delete to
 clear, Esc to close.
 

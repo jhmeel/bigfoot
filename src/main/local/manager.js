@@ -65,6 +65,23 @@ class LocalModelManager extends EventEmitter {
     }
   }
 
+  /**
+   * A model that is no longer offered (2B) is removed and replaced by the recommended one.
+   * @returns {Promise<string|null>} the model being downloaded instead, or null
+   */
+  async replaceRetired(recommend) {
+    const id = this.settings.get('localModel');
+    const leftovers = catalog.RETIRED.map((r) => this.modelDir(r)).filter((d) => fs.existsSync(d));
+    if (!catalog.RETIRED.includes(id) && !leftovers.length) return null;
+    for (const d of leftovers) await fs.promises.rm(d, { recursive: true, force: true }).catch(() => {});
+    if (!catalog.RETIRED.includes(id)) return null;
+    this.settings.update({ localModel: '' });
+    if (this.job && this.active()) return this.job.modelId;
+    const pick = (await recommend()).pick;
+    this.start(pick);
+    return pick;
+  }
+
   resumeOnStart() {
     if (this.job && this.job.status === 'queued') this.run();
     else this.emitProgress(true);

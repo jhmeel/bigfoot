@@ -23,6 +23,8 @@ const { resolveProvider } = require('./llm');
 const { LocalModelManager } = require('./local/manager');
 const { LocalRuntime } = require('./local/runtime');
 const { SpeechService } = require('./local/speech');
+const catalog = require('./local/catalog');
+const hardware = require('./local/hardware');
 
 const CURSOR_POLL_MS = 16;
 
@@ -180,6 +182,9 @@ async function start() {
   if (settings.get('launchAtLogin')) app.setLoginItemSettings({ openAtLogin: true, args: ['--hidden'] });
 
   local.resumeOnStart();
+  const upgrading = await local.replaceRetired(async () => catalog.recommend(await hardware.detect(app.getPath('userData'))))
+    .catch((err) => { logger.error('Model upgrade failed to start', err.message); return null; });
+  if (upgrading) logger.info(`Replacing the retired local model with ${upgrading}`);
   setTimeout(() => { runtime.preload(); if (settings.get('keepAiLoaded') !== false) speech.preload(); }, 3000); // after the windows are up
 
   try {
@@ -195,6 +200,7 @@ async function start() {
   const oldSetup = settings.get('onboarded') && settings.get('onboardedVersion') < ONBOARDING_VERSION;
   if (oldSetup && settings.get('localModel')) settings.update({ onboardedVersion: ONBOARDING_VERSION });
   if (!settings.get('onboarded') || (oldSetup && !settings.get('localModel') && !local.active())) windows.openOnboarding();
+  else if (upgrading) windows.openSettings('account');
   else if (!process.argv.includes('--hidden')) windows.openMain(resolveProvider(settings, { online: isOnline() }) ? 'home' : 'account');
   // Visual QA hooks; never set in normal use.
   if (process.env.BIGFOOT_DEMO === 'qa') global.bigfoot = { controller, windows, agent, audio, plugins, pluginManager, require };

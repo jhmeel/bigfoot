@@ -12,16 +12,10 @@ function hf(repo, rev, name, size, sha256) {
   return { name, size, sha256, url: `${HF}/${repo}/resolve/${rev}/${name}` };
 }
 
-// memoryGB: needed to run with a full context and a screenshot.
+// memoryGB: needed to run with a full context and a screenshot. 4B is the smallest offered: 2B was
+// too weak at choosing tools (it described what it would do instead of doing it).
+const RETIRED = ['qwen3-vl-2b'];
 const MODELS = [
-  {
-    id: 'qwen3-vl-2b', size: '2B', label: 'Qwen3-VL 2B', memoryGB: 2.6,
-    repo: 'Qwen/Qwen3-VL-2B-Instruct-GGUF',
-    files: [
-      hf('Qwen/Qwen3-VL-2B-Instruct-GGUF', '52d6c8ffea26cc873ac5ad116f8631268d7eb503', 'Qwen3VL-2B-Instruct-Q4_K_M.gguf', 1107409952, '089d75c52f4b7ffc56ba998ffc50aae89fcafc755f9e7208aacca281dca6c2ae'),
-      hf('Qwen/Qwen3-VL-2B-Instruct-GGUF', '52d6c8ffea26cc873ac5ad116f8631268d7eb503', 'mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf', 445053216, 'f9a68fabba69c3b81e153367b2c7521030b0fa8bb0de400c9599c8e6725f9c82'),
-    ],
-  },
   {
     id: 'qwen3-vl-4b', size: '4B', label: 'Qwen3-VL 4B', memoryGB: 4.2,
     repo: 'Qwen/Qwen3-VL-4B-Instruct-GGUF',
@@ -95,9 +89,8 @@ function recommend(hw) {
   if (vram >= 20) pick = 'qwen3-vl-30b';
   else if (vram >= 7) pick = 'qwen3-vl-8b';
   else if (vram >= 4) pick = 'qwen3-vl-4b';
-  else if (ram >= 15) pick = 'qwen3-vl-4b'; // on CPU, 8B is too slow to feel responsive
-  else pick = 'qwen3-vl-2b';
-  if (!runs(modelById(pick))) pick = MODELS.slice().reverse().find(runs)?.id || 'qwen3-vl-2b';
+  else pick = 'qwen3-vl-4b'; // on CPU, 8B is too slow to feel responsive
+  if (!runs(modelById(pick))) pick = MODELS.slice().reverse().find(runs)?.id || 'qwen3-vl-4b';
 
   const pickIndex = MODELS.findIndex((m) => m.id === pick);
   const options = MODELS.map((m, i) => {
@@ -116,4 +109,4 @@ function recommend(hw) {
   return { pick, options };
 }
 
-module.exports = { MODELS, RUNTIME_TAG, WHISPER_TAG, SPEECH, runtimeFor, modelById, filesFor, downloadBytes, recommend, GB };
+module.exports = { MODELS, RETIRED, RUNTIME_TAG, WHISPER_TAG, SPEECH, runtimeFor, modelById, filesFor, downloadBytes, recommend, GB };

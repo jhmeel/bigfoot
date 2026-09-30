@@ -23,7 +23,7 @@
   const PREFS_KEY = 'bigfoot.ink';
 
   let active = false;
-  let prefs = { tool: 'pen', color: '#ff453a', size: 1, barX: null, barY: null };
+  let prefs = { tool: 'pen', color: '#ff453a', size: 1, tidy: false, barX: null, barY: null };
   try { prefs = { ...prefs, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') }; } catch { /* defaults */ }
   const savePrefs = () => { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { /* not needed */ } };
 
@@ -46,6 +46,7 @@
   }
 
   const widthOf = (s) => {
+    if (s.px) return s.px;
     const w = SIZES[s.size] || SIZES[1];
     return s.tool === 'highlighter' ? w * 3.2 + 6 : s.tool === 'brush' ? w * 2.4 + 4 : w;
   };
@@ -124,6 +125,19 @@
         ctx.ellipse((a.x + b.x) / 2, (a.y + b.y) / 2, Math.abs(b.x - a.x) / 2, Math.abs(b.y - a.y) / 2, 0, 0, Math.PI * 2);
         ctx.stroke();
       }
+    } else if (s.sharp) { // exact geometry: pictures, SVG, and tidied shapes
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      if (pts.length === 1 || (pts.length === 2 && Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y) < 0.5)) ctx.lineTo(pts[0].x + 0.01, pts[0].y);
+      if (s.fill) {
+        ctx.save();
+        ctx.shadowColor = 'transparent';
+        ctx.fillStyle = s.fill;
+        ctx.fill();
+        ctx.restore();
+      }
+      if (!s.noStroke) ctx.stroke();
     } else {
       smoothPath(ctx, pts);
       ctx.stroke();
@@ -240,6 +254,75 @@
     redrawLive();
   }
 
+  // ---------------------------------------------------------------- tidy: rough shapes become perfect ones
+  function simplify(pts, eps) {
+    if (pts.length < 3) return pts.slice();
+    let far = 0;
+    let at = 0;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const d = distToSegment(pts[i], pts[0], pts[pts.length - 1]);
+      if (d > far) { far = d; at = i; }
+    }
+    if (far <= eps) return [pts[0], pts[pts.length - 1]];
+    return [...simplify(pts.slice(0, at + 1), eps).slice(0, -1), ...simplify(pts.slice(at), eps)];
+  }
+
+  const ring = (cx, cy, rx, ry) => Array.from({ length: 73 }, (_, i) => ({ x: cx + rx * Math.cos((i / 72) * Math.PI * 2), y: cy + ry * Math.sin((i / 72) * Math.PI * 2) }));
+
+  /** The perfect version of a hand-drawn line, circle, ellipse, rectangle, triangle, or quadrilateral. */
+  function recognize(pts) {
+    if (pts.length < 4) return null;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+    const w = x1 - x0;
+    const h = y1 - y0;
+    const size = Math.max(w, h);
+    if (size < 16) return null;
+    const a = pts[0];
+    const b = pts[pts.length - 1];
+    const chord = Math.hypot(b.x - a.x, b.y - a.y);
+    const bend = Math.max(...pts.map((p) => distToSegment(p, a, b)));
+    if (chord > size * 0.8 && bend < Math.max(5, chord * 0.07)) return [a, b];
+    if (chord > size * 0.3) return null; // open and curved: leave it as drawn
+
+    // A few straight sides? (A circle simplifies to six or more.) Drop the extra vertex where the
+    // stroke started mid-side.
+    const v = simplify([...pts, a], Math.max(4, size * 0.08)).slice(0, -1);
+    for (let again = true; again && v.length > 3;) {
+      again = false;
+      for (let i = 0; i < v.length; i++) {
+        if (distToSegment(v[i], v[(i + v.length - 1) % v.length], v[(i + 1) % v.length]) < Math.max(4, size * 0.07)) { v.splice(i, 1); again = true; break; }
+      }
+    }
+    if ((v.length === 3 || v.length === 4) && pts.every((p) => v.some((q, i) => distToSegment(p, q, v[(i + 1) % v.length]) < Math.max(5, size * 0.1)))) {
+      const level = (p, q) => Math.min(Math.abs(p.x - q.x), Math.abs(p.y - q.y)) < size * 0.12;
+      if (v.length === 4 && v.every((q, i) => level(q, v[(i + 1) % 4]))) {
+        return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }, { x: x0, y: y0 }];
+      }
+      return [...v, v[0]];
+    }
+
+    const cx = (x0 + x1) / 2;
+    const cy = (y0 + y1) / 2;
+    const rx = w / 2;
+    const ry = h / 2;
+    const err = pts.reduce((n, p) => n + Math.abs(Math.hypot((p.x - cx) / rx, (p.y - cy) / ry) - 1), 0) / pts.length;
+    const reach = Math.min(w, h) * 0.12 + 2; // a box's corners; a circle stays ~0.2 × its width away
+    const boxy = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].every(([qx, qy]) => pts.some((p) => Math.hypot(p.x - qx, p.y - qy) < reach));
+    if (boxy && err > 0.07) return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }, { x: x0, y: y0 }];
+    if (err < 0.09 + 1.5 / Math.min(rx, ry) && Math.min(w, h) > 8) {
+      if (Math.abs(w - h) / size < 0.15) { const r = (w + h) / 4; return ring(cx, cy, r, r); }
+      return ring(cx, cy, rx, ry);
+    }
+    return null;
+  }
+
+  function tidied(s) {
+    if (!s || TOOLS[s.tool].shape || s.sharp || s.tool === 'eraser') return null;
+    const pts = recognize(s.points);
+    return pts ? { ...s, points: pts, sharp: true, pressure: false } : null;
+  }
+
   // ---------------------------------------------------------------- pointer input
   function constrain(tool, a, b) {
     const dx = b.x - a.x;
@@ -264,13 +347,16 @@
       return;
     }
     current = { tool: prefs.tool, color: prefs.color, size: prefs.size, points: [p], pressure: e.pointerType === 'pen' };
+    holdAt = p;
+    armHold();
     redrawLive();
   });
 
   layer.addEventListener('pointermove', (e) => {
     moveCursor(e);
     if (erased) { for (const ev of e.getCoalescedEvents ? e.getCoalescedEvents() : [e]) eraseAt({ x: ev.clientX, y: ev.clientY }); return; }
-    if (!current) return;
+    if (!current || current.snapped) return;
+    if (Math.hypot(e.clientX - holdAt.x, e.clientY - holdAt.y) > 4) { holdAt = { x: e.clientX, y: e.clientY }; armHold(); }
     if (TOOLS[current.tool].shape) {
       const b = { x: e.clientX, y: e.clientY };
       current.points = [current.points[0], e.shiftKey ? constrain(current.tool, current.points[0], b) : b];
@@ -283,15 +369,29 @@
     redrawLive();
   });
 
+  // Hold the pen still at the end of a stroke and it snaps to the shape you meant.
+  let holdAt = null;
+  let holdTimer = null;
+  function armHold() {
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => {
+      const t = tidied(current);
+      if (t) { current = { ...t, snapped: true }; redrawLive(); }
+    }, 550);
+  }
+
   function endStroke() {
+    clearTimeout(holdTimer);
     if (erased) {
       if (erased.before.length !== strokes.length) record({ type: 'erase', before: erased.before, after: strokes.slice() });
       erased = null;
       return;
     }
     if (!current) return;
-    const s = current;
+    let s = current;
     current = null;
+    if (s.snapped) delete s.snapped;
+    else if (prefs.tidy) s = tidied(s) || s;
     redrawLive();
     const pts = s.points;
     if (TOOLS[s.tool].shape && (pts.length < 2 || Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y) < 3)) return;
@@ -345,6 +445,7 @@
   $('ink-undo').addEventListener('click', undo);
   $('ink-redo').addEventListener('click', redo);
   $('ink-clear').addEventListener('click', clearInk);
+  $('ink-tidy').addEventListener('click', () => { prefs.tidy = !prefs.tidy; changed(); });
   $('ink-close').addEventListener('click', () => api.invoke('ink:stop'));
 
   function setTool(t) {
@@ -367,6 +468,7 @@
     $('ink-undo').disabled = !undoStack.length;
     $('ink-redo').disabled = !redoStack.length;
     $('ink-clear').disabled = !strokes.length;
+    $('ink-tidy').setAttribute('aria-pressed', String(Boolean(prefs.tidy)));
   }
 
   // Pointer mode: ink stays up, clicks reach the apps below, the toolbar stays usable.
@@ -416,6 +518,7 @@
     if (k === 'delete' || k === 'backspace') { clearInk(); return; }
     const tool = Object.keys(TOOLS).find((t) => TOOLS[t].key === k);
     if (tool) { setTool(tool); return; }
+    if (k === 't') { prefs.tidy = !prefs.tidy; changed(); return; }
     const n = Number(e.key);
     if (n >= 1 && n <= COLORS.length) { prefs.color = COLORS[n - 1]; if (['eraser', 'pointer'].includes(prefs.tool)) prefs.tool = 'pen'; changed(); }
     if (e.key === '[' || e.key === ']') { prefs.size = Math.max(0, Math.min(SIZES.length - 1, prefs.size + (e.key === ']' ? 1 : -1))); changed(); }
@@ -439,8 +542,18 @@
         const blob = await new Promise((r) => baseCanvas.toBlob(r, 'image/png'));
         return blob ? blob.arrayBuffer() : null;
       }
-      case 'add':
-        return aiEdit(() => { strokes.push({ ...msg.stroke, pressure: false }); return 1; });
+      case 'add': {
+        const list = (Array.isArray(msg.strokes) ? msg.strokes : [msg.stroke]).filter((s) => s && TOOLS[s.tool] && Array.isArray(s.points) && s.points.length);
+        return aiEdit(() => { for (const s of list) strokes.push({ ...s, pressure: false }); return list.length; });
+      }
+      case 'tidy':
+        return aiEdit(() => {
+          const r = msg.rect;
+          const within = (s) => !r || s.points.some((p) => p.x >= r.x0 && p.x <= r.x1 && p.y >= r.y0 && p.y <= r.y1);
+          let n = 0;
+          strokes = strokes.map((s) => { const t = within(s) && tidied(s); if (t) n++; return t || s; });
+          return n;
+        });
       case 'erase':
         return aiEdit(() => {
           const { x0, y0, x1, y1 } = msg.rect;
