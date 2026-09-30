@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.log
+build-log.txt
+# compiled from InputHelper.cs by `npm run build:native` (runs before start and dist)
+src/main/native/*.exe

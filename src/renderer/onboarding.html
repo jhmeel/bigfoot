@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="onboarding.css">
+  <link rel="stylesheet" href="local-ai.css">
+  <title>Welcome to Bigfoot</title>
+</head>
+<body>
+  <div class="window">
+    <div class="titlebar"><div class="traffic"><button class="close" aria-label="Close"></button><button class="min" aria-label="Minimize"></button></div></div>
+
+    <div class="steps" id="steps">
+      <!-- ============================================================ 1 WELCOME -->
+      <section class="step" data-step="welcome">
+        <div class="stage" id="stage">
+          <div class="glow"></div>
+          <img class="hero-logo" id="hero-logo" src="assets/icon.png" width="112" height="112" alt="Bigfoot">
+          <div class="hero-bubble" id="hero-bubble"></div>
+        </div>
+        <h1 class="large-title">Meet Bigfoot</h1>
+        <p class="lede">It lives next to your cursor, sees your screen, talks with you, and gets things done.</p>
+        <div class="features">
+          <div class="feature"><span class="f-icon" style="--c:#e84d9e"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="5.5" y="1.8" width="5" height="8" rx="2.5"/><path d="M3.3 7.8a4.7 4.7 0 0 0 9.4 0M8 12.6v1.8"/></svg></span>
+            <div><div class="headline">Just ask out loud</div><div class="caption">Say its name, or hold Ctrl + Alt and talk. Drag to point at things.</div></div></div>
+          <div class="feature"><span class="f-icon" style="--c:#3380ff"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M3 2.5l9.5 4.2-4.1 1.2-1.3 4.1z"/><path d="M8.6 8.1l3.8 3.8" stroke-linecap="round"/></svg></span>
+            <div><div class="headline">It does the work</div><div class="caption">Opens apps, clicks, types, manages files, and runs commands.</div></div></div>
+          <div class="feature"><span class="f-icon" style="--c:#34d399"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 11.5c2-4 4-6.5 6-6.5s1 4 3 4 2-2 2-2"/><circle cx="3" cy="4" r="1.3"/></svg></span>
+            <div><div class="headline">It shows you</div><div class="caption">Highlights, circles, and draws right on your screen to explain.</div></div></div>
+          <div class="feature"><span class="f-icon" style="--c:#ffb224"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M8 1.8l5 2v4c0 3.1-2.2 5.4-5 6.4-2.8-1-5-3.3-5-6.4v-4z"/></svg></span>
+            <div><div class="headline">You stay in control</div><div class="caption">It asks before anything risky, and Esc stops it instantly.</div></div></div>
+        </div>
+      </section>
+
+      <!-- ============================================================ NAME -->
+      <section class="step" data-step="name">
+        <div class="name-hero">
+          <img class="float orb-mark" src="assets/icon.png" width="72" height="72" alt="">
+          <div class="name-bubble" id="name-bubble">hey! i’m bigfoot</div>
+        </div>
+        <h1 class="title-1">What should I call myself?</h1>
+        <p class="lede">You’ll say it to get my attention: “Hey <span id="name-echo">Bigfoot</span>…”</p>
+        <div class="form">
+          <input class="field big name-input" id="name" maxlength="24" autocomplete="off" spellcheck="false" placeholder="Bigfoot">
+          <div class="chips" id="name-chips"></div>
+          <label class="toggle-row">
+            <span><span class="headline">Answer when I hear my name</span></span>
+            <span class="switch"><input type="checkbox" id="wake" checked><span class="track"></span></span>
+          </label>
+        </div>
+      </section>
+
+      <!-- ============================================================ VOICE -->
+      <section class="step" data-step="voice">
+        <div class="step-icon" style="background:#8f46eb"><svg viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round"><path d="M3 6.5v3M5.5 4.5v7M8 2.5v11M10.5 5v6M13 7v2"/></svg></div>
+        <h1 class="title-1">Choose a voice</h1>
+        <p class="lede">Pick how <span class="name-slot">Bigfoot</span> sounds when it talks back.</p>
+        <div class="form">
+          <div class="voice-row">
+            <select class="field" id="voice"></select>
+            <button class="btn secondary" id="preview">▶&#xFE0E;&nbsp; Preview</button>
+          </div>
+          <div class="caption" id="voice-msg"></div>
+        </div>
+      </section>
+
+      <!-- ============================================================ LISTEN -->
+      <section class="step" data-step="listen">
+        <div class="step-icon" style="background:#e84d9e"><svg viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round"><rect x="5.5" y="1.8" width="5" height="8" rx="2.5"/><path d="M3.3 7.8a4.7 4.7 0 0 0 9.4 0M8 12.6v1.8"/></svg></div>
+        <h1 class="title-1">Let <span class="name-slot">Bigfoot</span> hear you</h1>
+        <p class="lede">Your speech is recognized on this PC. No internet needed.</p>
+        <div class="mic-card">
+          <div class="mic-orb" id="mic-orb"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="5.5" y="1.8" width="5" height="8" rx="2.5"/><path d="M3.3 7.8a4.7 4.7 0 0 0 9.4 0M8 12.6v1.8"/></svg></div>
+          <div class="mic-text">
+            <div class="headline" id="mic-title">Check your microphone</div>
+            <div class="caption" id="mic-sub">Click Test, then say something.</div>
+            <div class="meter" id="mic-meter"></div>
+          </div>
+          <div class="mic-actions">
+            <button class="btn secondary small" id="mic-test">Test</button>
+            <button class="btn plain small" id="mic-settings" hidden>Open Windows Settings</button>
+          </div>
+        </div>
+        <div class="howto">
+          <div class="how"><div class="keys"><kbd>Ctrl</kbd><kbd>Alt</kbd></div><div><div class="headline">Hold to talk</div><div class="caption">Let go when you’re done. Drag while holding to point.</div></div></div>
+          <div class="how"><div class="keys"><span class="dbl">2×</span></div><div><div class="headline">Double-click the desktop</div><div class="caption">Opens the tool tray: talk, point, math, and more.</div></div></div>
+        </div>
+      </section>
+
+      <!-- ============================================================ MODEL (final) -->
+      <section class="step" data-step="model">
+        <div class="step-icon" style="background:linear-gradient(135deg,#2563eb,#8f46eb)"><svg viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"><rect x="4" y="4" width="8" height="8" rx="1.5"/><path d="M6.5 1.8V4M9.5 1.8V4M6.5 12v2.2M9.5 12v2.2M1.8 6.5H4M1.8 9.5H4M12 6.5h2.2M12 9.5h2.2" stroke-linecap="round"/></svg></div>
+        <h1 class="title-1">Complete Setup</h1>
+        <p class="lede">Your AI runs on this PC: private, and it keeps working without internet.</p>
+        <div class="model-pick" id="local-ai"></div>
+        <p class="note" id="bg-note" hidden>You can continue now. The download keeps going in the background.</p>
+        <label class="login-row compact"><span>Open <span class="name-slot">Bigfoot</span> when I sign in</span><span class="switch"><input type="checkbox" id="login" checked><span class="track"></span></span></label>
+      </section>
+    </div>
+
+    <footer class="nav">
+      <div class="dots" id="dots"></div>
+      <div class="nav-buttons">
+        <button class="btn plain" id="back">Back</button>
+        <button class="btn primary large" id="next">Get Started</button>
+      </div>
+    </footer>
+  </div>
+  <script src="ui.js"></script>
+  <script src="local-ai.js"></script>
+  <script src="onboarding.js"></script>
+</body>
+</html>

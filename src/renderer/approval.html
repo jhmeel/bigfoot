@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .window { align-items: center; text-align: center; padding: 20px 16px 16px; -webkit-app-region: drag; background: rgba(28, 30, 29, 0.98); }
+    .icon { filter: drop-shadow(0 6px 14px rgba(0,0,0,.45)); transition: filter 200ms; }
+    .icon.danger { filter: drop-shadow(0 6px 14px rgba(0,0,0,.45)) drop-shadow(0 0 10px rgba(229,72,77,.55)); }
+    h1 { font-size: 13px; font-weight: 700; margin: 12px 0 4px; letter-spacing: -0.005em; }
+    p { font-size: 12px; color: var(--text-2); margin: 0 6px; line-height: 1.45; }
+    pre { -webkit-app-region: no-drag; align-self: stretch; text-align: left; margin: 10px 0 0; padding: 8px 10px; max-height: 96px; overflow: auto;
+      background: #0b0c0c; border: 1px solid var(--border-subtle); border-radius: 7px; color: #fde68a;
+      font: 11.5px/1.5 'Cascadia Mono', Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+    .buttons { display: flex; gap: 8px; align-self: stretch; margin-top: auto; padding-top: 14px; }
+    .buttons .btn { flex: 1; height: 28px; font-size: 13px; }
+    .btn.primary.destructive { background: var(--danger); }
+    .btn.primary.destructive:hover { background: #f2555a; }
+  </style>
+  <title>Bigfoot</title>
+</head>
+<body>
+  <div class="window" role="alertdialog" aria-labelledby="title" aria-describedby="message">
+    <img class="icon" id="icon" src="assets/icon.png" width="56" height="56" alt="">
+    <h1 id="title">Allow this action?</h1>
+    <p id="message"></p>
+    <pre id="detail" hidden></pre>
+    <div class="buttons">
+      <button class="btn secondary" id="deny">Don’t Allow</button>
+      <button class="btn primary" id="allow">Allow</button>
+    </div>
+  </div>
+  <script src="approval.js"></script>
+</body>
+</html>
