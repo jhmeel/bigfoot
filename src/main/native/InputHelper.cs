@@ -12,7 +12,8 @@
 //             !|wake|<confidence>                 (the assistant's name was heard)
 //             !|dblclick|<x>,<y>                  (physical double-click on empty desktop space)
 //
-//             <id>|ok|<base64>                    (reply to "ink": handwriting candidates)
+//             <id>|ok|<base64>                    (reply to "ink": handwriting candidates;
+//                                                  reply to "mathink": MathML from Windows' Math Recognizer)
 //
 // Build with `npm run build:native` (scripts/build-native.js lists the references).
 
@@ -149,6 +150,180 @@ internal static class DesktopClicks
 }
 
 /// <summary>Handwriting recognition with the recognizer built into Windows (offline, milliseconds).</summary>
+// The Math Input Control's events. COM can only call into public, top-level types: nested inside a
+// non-public class, connecting fails with CONNECT_E_CANNOTCONNECT (0x80040202).
+[ComVisible(true), Guid("683336b5-a47d-4358-96f9-875a472ae70a"), InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+public interface IMathInputEvents
+{
+    [DispId(0)] int Insert([MarshalAs(UnmanagedType.BStr)] string mathMl);
+    [DispId(1)] int Close();
+    [DispId(3)] int Clear();
+}
+
+[ComVisible(true), ClassInterface(ClassInterfaceType.None)]
+public class MathInputSink : IMathInputEvents
+{
+    public int Insert(string mathMl) { var p = MathRecognizer.pending; MathRecognizer.pending = null; if (p != null) p(mathMl ?? ""); return 0; }
+    public int Close() { return 0; }
+    public int Clear() { return 0; }
+}
+
+/// <summary>
+/// Handwritten math read by Windows' own Math Recognizer (the engine behind the Math Input Panel,
+/// micaut.dll), which understands 2-D layout: powers, fractions, roots. Its control only hands over
+/// its result (MathML) through the Insert event, so it's kept on screen but fully transparent and
+/// click-through (invisible to the user), given the strokes, and its Insert button is pressed through
+/// UI Automation. One instance is reused on its own STA thread.
+/// </summary>
+internal static class MathRecognizer
+{
+    static readonly Guid ClsidMathInputControl = new Guid("c561816c-14d8-4090-830c-98d994b21c7b");
+    static readonly Guid ClsidInkDisp = new Guid("937c1a34-151d-4610-9ca6-a8cc9bdb5d83");
+    static readonly Guid IidEvents = new Guid("683336b5-a47d-4358-96f9-875a472ae70a");
+    static readonly System.Globalization.CultureInfo Inv = System.Globalization.CultureInfo.InvariantCulture;
+    static readonly object Gate = new object();
+    static System.Windows.Forms.Form host;
+    static dynamic mic;
+    static AutomationElement insertButton;
+    internal static Action<string> pending;
+
+    public static bool Available
+    {
+        get { return Type.GetTypeFromCLSID(ClsidMathInputControl, false) != null && System.IO.File.Exists(Environment.ExpandEnvironmentVariables(@"%CommonProgramFiles%\Microsoft Shared\ink\micaut.dll")); }
+    }
+
+    /// <summary>Strokes "x,y x,y;x,y …" in screen pixels → MathML ("" if nothing was recognized).</summary>
+    public static string Recognize(string strokes)
+    {
+        lock (Gate)
+        {
+            EnsureThread();
+            string result = null;
+            Exception failure = null;
+            var done = new ManualResetEvent(false);
+            host.BeginInvoke((Action)(() =>
+            {
+                try { Start(strokes, (r) => { result = r; done.Set(); }); }
+                catch (Exception ex) { failure = ex; done.Set(); }
+            }));
+            // The first call also creates the control and finds its Insert button (several seconds);
+            // after that a reading takes well under a second.
+            if (!done.WaitOne(TimeSpan.FromSeconds(insertButton == null ? 25 : 10))) { pending = null; throw new TimeoutException("math recognition took too long"); }
+            if (failure != null) throw failure;
+            return result ?? "";
+        }
+    }
+
+    static void EnsureThread()
+    {
+        if (host != null) return;
+        var ready = new ManualResetEvent(false);
+        var t = new Thread(() =>
+        {
+            host = new System.Windows.Forms.Form { ShowInTaskbar = false, FormBorderStyle = System.Windows.Forms.FormBorderStyle.None };
+            IntPtr unused = host.Handle; // create the window that marshals work onto this thread
+            ready.Set();
+            System.Windows.Forms.Application.Run();
+        });
+        t.SetApartmentState(ApartmentState.STA);
+        t.IsBackground = true;
+        t.Start();
+        ready.WaitOne(TimeSpan.FromSeconds(10));
+    }
+
+    static void Start(string strokes, Action<string> onResult)
+    {
+        if (mic == null)
+        {
+            dynamic created = Activator.CreateInstance(Type.GetTypeFromCLSID(ClsidMathInputControl));
+            var cpc = (System.Runtime.InteropServices.ComTypes.IConnectionPointContainer)(object)created;
+            System.Runtime.InteropServices.ComTypes.IConnectionPoint cp;
+            Guid iid = IidEvents;
+            cpc.FindConnectionPoint(ref iid, out cp);
+            int cookie;
+            cp.Advise(new MathInputSink(), out cookie);
+            mic = created; // only once its events are connected, so a failure is retried next time
+        }
+        dynamic ink = Activator.CreateInstance(Type.GetTypeFromCLSID(ClsidInkDisp));
+        int count = 0;
+        foreach (string s in strokes.Split(';'))
+        {
+            string[] pts = s.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            if (pts.Length == 0) continue;
+            var packets = new int[pts.Length * 2];
+            for (int i = 0; i < pts.Length; i++)
+            {
+                string[] xy = pts[i].Split(',');
+                packets[2 * i] = (int)(double.Parse(xy[0], Inv) * 26.46); // pixels → ink space (HIMETRIC)
+                packets[2 * i + 1] = (int)(double.Parse(xy[1], Inv) * 26.46);
+            }
+            ink.CreateStroke(packets, null);
+            count++;
+        }
+        if (count == 0) { onResult(""); return; }
+
+        mic.SetPosition(0, 0, 800, 500); // on screen (it only recognizes there) but invisible, below
+        mic.Show();
+        MakeInvisible();
+        mic.Clear();
+        mic.LoadInk(ink);
+        pending = onResult;
+
+        // Recognition runs as the ink loads; give it a moment, then press Insert to get the MathML.
+        var timer = new System.Windows.Forms.Timer { Interval = 350 };
+        timer.Tick += (o, e) =>
+        {
+            timer.Stop();
+            timer.Dispose();
+            try
+            {
+                if (insertButton == null) insertButton = FindInsert();
+                if (insertButton == null) { var p = pending; pending = null; if (p != null) p(""); return; }
+                ((InvokePattern)insertButton.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+            }
+            catch (ElementNotAvailableException)
+            {
+                insertButton = null; // the control's window was recreated: find the button again next time
+                var p = pending; pending = null; if (p != null) p("");
+            }
+        };
+        timer.Start();
+    }
+
+    static AutomationElement FindInsert()
+    {
+        int pid = System.Diagnostics.Process.GetCurrentProcess().Id;
+        foreach (AutomationElement w in AutomationElement.RootElement.FindAll(TreeScope.Children, new PropertyCondition(AutomationElement.ProcessIdProperty, pid)))
+        {
+            var b = w.FindFirst(TreeScope.Descendants, new AndCondition(
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                new PropertyCondition(AutomationElement.NameProperty, "Insert")));
+            if (b != null) return b;
+        }
+        return null;
+    }
+
+    [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr h, int i);
+    [DllImport("user32.dll")] static extern int SetWindowLong(IntPtr h, int i, int v);
+    [DllImport("user32.dll")] static extern bool SetLayeredWindowAttributes(IntPtr h, uint key, byte alpha, uint flags);
+    [DllImport("user32.dll")] static extern bool EnumThreadWindows(int threadId, EnumProc fn, IntPtr p);
+    [DllImport("kernel32.dll")] static extern int GetCurrentThreadId();
+    delegate bool EnumProc(IntPtr h, IntPtr p);
+
+    /// <summary>Fully transparent, click-through, out of the taskbar and Alt+Tab, never activated.</summary>
+    static void MakeInvisible()
+    {
+        EnumThreadWindows(GetCurrentThreadId(), (h, p) =>
+        {
+            if (h == host.Handle) return true;
+            const int GWL_EXSTYLE = -20, WS_EX_LAYERED = 0x80000, WS_EX_TRANSPARENT = 0x20, WS_EX_TOOLWINDOW = 0x80, WS_EX_NOACTIVATE = 0x8000000;
+            SetWindowLong(h, GWL_EXSTYLE, GetWindowLong(h, GWL_EXSTYLE) | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
+            SetLayeredWindowAttributes(h, 0, 0, 2 /* LWA_ALPHA */);
+            return true;
+        }, IntPtr.Zero);
+    }
+}
+
 internal static class InkReader
 {
     static InkRecognizerContainer recognizer;
@@ -382,6 +557,9 @@ internal static class InputHelper
             case "wake-off": Speech.StopWake(); return null;
             case "dblclick": DesktopClicks.SetEnabled(Arg(p, 2) == "1"); return null;
             case "ink": return Convert.ToBase64String(Encoding.UTF8.GetBytes(InkReader.Recognize(TextArg(p, 2))));
+            case "mathink":
+                if (!MathRecognizer.Available) throw new InvalidOperationException("Windows Math Recognizer is not installed");
+                return Convert.ToBase64String(Encoding.UTF8.GetBytes(MathRecognizer.Recognize(TextArg(p, 2))));
             case "title":
                 {
                     IntPtr h = GetForegroundWindow();

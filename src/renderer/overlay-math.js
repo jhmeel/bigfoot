@@ -193,7 +193,11 @@
     grp.readingText = text;
     if (text) {
       const label = document.createElement('span');
+      label.className = 'math-read-text';
       label.textContent = text;
+      label.title = 'Read wrong? Tap to correct it, then press Enter';
+      label.addEventListener('pointerdown', (e) => e.stopPropagation()); // not the start of a stroke
+      label.addEventListener('click', (e) => { e.stopPropagation(); correct(grp, label); });
       grp.shareBtn = button('math-share', '', (b) => share(grp, b));
       grp.shareBtn.innerHTML = ICON_SHARE;
       grp.shareBtn.title = 'Share: copies the problem, answer, and working';
@@ -203,6 +207,43 @@
     }
     grp.reading.classList.toggle('show', Boolean(text));
     requestAnimationFrame(() => keepOnScreen(grp));
+  }
+
+  /**
+   * The reading was wrong (no recognizer is perfect): the user types the fix and it's solved as
+   * typed, by the same exact engines as the calculator.
+   */
+  function correct(grp, label) {
+    const input = document.createElement('input');
+    input.className = 'math-fix';
+    input.value = grp.readingText.replace(/\s+/g, ' ');
+    input.spellcheck = false;
+    input.addEventListener('pointerdown', (e) => e.stopPropagation());
+    label.replaceWith(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const finish = async (apply) => {
+      if (done) return;
+      done = true;
+      const text = input.value.trim();
+      if (!apply || !text || text === grp.readingText) { showReading(grp, grp.readingText); return; }
+      grp.version++; // the ink's own reading no longer applies
+      showReading(grp, text);
+      showAnswer(grp, { state: 'thinking' });
+      let r;
+      try { r = await api.invoke('math:calc', text, 'deg'); } catch (err) { r = { ok: false, message: err.message }; }
+      if (!groups.includes(grp)) return;
+      grp.result = null;
+      if (r.ok) { showAnswer(grp, { state: 'done', text: r.answer, title: text }); showWorking(grp, r.steps); }
+      else showAnswer(grp, { state: 'unknown', text: '?', title: r.message || 'Couldn’t solve that' });
+    };
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation(); // typing here never triggers the math tool's shortcuts
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    });
+    input.addEventListener('blur', () => finish(true));
   }
 
   function removeGroup(grp) {

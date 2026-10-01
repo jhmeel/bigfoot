@@ -158,6 +158,14 @@ class InputHelper extends EventEmitter {
     return text ? text.split('\u001e').map((seg) => seg.split('\u001f').filter(Boolean)) : [];
   }
 
+  /** Handwritten math → MathML, by Windows' Math Recognizer. Throws when it isn't installed. */
+  async recognizeMath(strokes) {
+    const payload = strokes
+      .map((s) => s.map((p) => `${Math.round(p.x * 10) / 10},${Math.round(p.y * 10) / 10}`).join(' '))
+      .join(';');
+    return Buffer.from(await this.send('mathink', Buffer.from(payload, 'utf8').toString('base64')), 'base64').toString('utf8');
+  }
+
   async windowTitle() {
     return Buffer.from(await this.send('title'), 'base64').toString('utf8');
   }

@@ -239,6 +239,24 @@ test('a streamed answer is rebuilt exactly, text and tool calls, while the text 
   assert.deepEqual(msg.tool_calls, [{ id: 'c1', type: 'function', function: { name: 'open_app', arguments: '{"name":"Notepad"}' } }]);
 });
 
+test('Windows Math Recognizer MathML becomes math the solvers read: powers, fractions, roots, calculus', () => {
+  const { mathmlToText } = require('../src/main/mathml');
+  const { interpretInk } = require('../src/main/mathink');
+  const m = (body) => `<m:math xmlns:m="http://www.w3.org/1998/Math/MathML">${body}</m:math>`;
+  assert.equal(mathmlToText(m('<m:mn>2</m:mn><m:mi>x</m:mi><m:mo>+</m:mo><m:mn>1</m:mn><m:mo>=</m:mo><m:mn>7</m:mn>')), '2x+1=7');
+  assert.equal(mathmlToText(m('<m:msup><m:mrow><m:mi>x</m:mi></m:mrow><m:mrow><m:mn>2</m:mn></m:mrow></m:msup><m:mo>-</m:mo><m:mn>5</m:mn><m:mi>x</m:mi><m:mo>+</m:mo><m:mn>6</m:mn><m:mo>=</m:mo><m:mn>0</m:mn>')), 'x^(2)-5x+6=0');
+  assert.equal(mathmlToText(m('<m:mfrac><m:mrow><m:mi>x</m:mi><m:mo>+</m:mo><m:mn>1</m:mn></m:mrow><m:mn>2</m:mn></m:mfrac><m:mo>=</m:mo><m:mn>4</m:mn>')), '(x+1)/2=4');
+  assert.equal(mathmlToText(m('<m:msqrt><m:mn>9</m:mn></m:msqrt><m:mo>+</m:mo><m:mn>4</m:mn>')), 'sqrt(9)+4');
+  assert.equal(mathmlToText(m('<m:mn>12</m:mn><m:mo>&#xD7;</m:mo><m:mn>4</m:mn>')), '12*4'); // × is times, never the letter x
+  assert.equal(mathmlToText(m('<m:mfrac><m:mi>d</m:mi><m:mrow><m:mi>d</m:mi><m:mi>x</m:mi></m:mrow></m:mfrac><m:msup><m:mi>x</m:mi><m:mn>3</m:mn></m:msup>')), 'd/dx x^(3)');
+  assert.equal(mathmlToText(m('<m:msubsup><m:mo>&#x222B;</m:mo><m:mn>0</m:mn><m:mn>3</m:mn></m:msubsup><m:msup><m:mi>x</m:mi><m:mn>2</m:mn></m:msup><m:mi>d</m:mi><m:mi>x</m:mi>')), '∫(0,3)x^(2)dx');
+  assert.equal(mathmlToText(''), '');
+  // …and on to the answers
+  assert.equal(interpretInk([['x^(2)-5x+6=0']]).answer, 'x = 2, 3');
+  assert.equal(interpretInk([['(x+1)/2=4']]).answer, 'x = 7');
+  assert.equal(require('../src/main/cas').fromHandwriting('d/dx x^(3)'), 'diff(x^(3),x)');
+});
+
 test('a new request keeps earlier turns as text only, so it never re-reads old screenshots', () => {
   const p = new LocalProvider({ runtime: {}, model: 'm', system: 'SYS', tools: [], screen: { width: 1000, height: 500 } });
   const img = { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } };

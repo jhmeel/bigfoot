@@ -119,8 +119,12 @@ drawing as SVG code, edit it (recolor, fix, restyle, add labels), and put it bac
 Shortcuts: V P H B E L A R O for tools, 1–8 for colors, [ ] for size, Ctrl+Z / Ctrl+Y, Delete to
 clear, Esc to close.
 
-**Math**: write math anywhere on the screen. Windows' handwriting recognizer reads it in a fraction
-of a second and shows the clean reading underneath, so a misread is obvious at once. Press **Solve**
+**Math**: write math anywhere on the screen. It's read by Windows' own **Math Recognizer** (the
+engine behind the Math Input Panel), which understands math layout: a small raised number is a
+power (x²), a stacked fraction is a fraction, √ is a root, and x is a letter while × is times. It
+runs invisibly in the background in under a second; you keep writing on the screen. (Where it isn't
+installed, Bigfoot falls back to the plain handwriting recognizer.) The clean reading appears under
+your writing; if a symbol was misread, tap the reading, fix it, and press Enter. Press **Solve**
 next to an expression (or **Solve all**, or Enter). "=" never means "answer" by itself: sums are
 computed exactly, a sum with your own answer (12 + 7 = 19) is checked (✓, or the right answer), and
 equations with one unknown, such as 2x + 1 = 7, 3x + 2 = 2x + 5, or x² − 5x + 6 = 0, are solved on

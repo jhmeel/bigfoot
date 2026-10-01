@@ -12,6 +12,7 @@ const { readInk, interpretInk, splitScripts, pretty } = require('./mathink');
 const { solveSystem, evaluate, solveEquation } = require('./math');
 const cas = require('./cas');
 const { matchIntent } = require('./intents');
+const { mathmlToText } = require('./mathml');
 const voice = require('./voice');
 
 const PTT_DELAY_MS = 150;      // ignore quick Ctrl+Alt shortcuts; only a hold starts listening
@@ -476,7 +477,14 @@ class Controller {
 
   /** Draw or math on one display; it takes the mouse and keyboard until closed. */
   startInk(mode, displayId, { tool = null, focus = true } = {}) {
-    if (mode === 'math') cas.compute('1').catch(() => {}); // load the math engine while the user writes
+    if (mode === 'math') {
+      cas.compute('1').catch(() => {}); // load the math engine while the user writes
+      // Start Windows' Math Recognizer now (its first reading takes seconds), with one tiny stroke.
+      if (this.mathRecognizer !== false && !this.mathRecognizerWarm) {
+        this.mathRecognizerWarm = true;
+        this.input.recognizeMath([[{ x: 10, y: 10 }, { x: 30, y: 10 }]]).catch(() => { this.mathRecognizerWarm = false; });
+      }
+    }
     if (this.ink && this.ink.mode === mode && this.ink.displayId === displayId) {
       // Already open (e.g. in pointer mode): pick up drawing again without losing it.
       if (focus) this.windows.setOverlayFocus(displayId, true);
@@ -607,12 +615,26 @@ class Controller {
       .slice(0, 2000).filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y))).filter((s) => s.length);
     if (!clean.length) return { ok: true, text: '', status: 'unknown' };
     try {
-      // Powers (the small raised 2 in x²) are read on their own and written as ^( ).
-      const segments = [];
-      for (const run of splitScripts(clean)) {
-        const read = await this.input.recognizeInk(run.strokes);
-        if (run.sup) segments.push(['^('], ...read, [')']);
-        else segments.push(...read);
+      // Windows' Math Recognizer reads math as math (powers, fractions, roots, x vs ×), so it goes
+      // first. The plain handwriting recognizer is the fallback where it isn't installed.
+      let segments = null;
+      if (this.mathRecognizer !== false) {
+        try {
+          const text = mathmlToText(await this.input.recognizeMath(clean));
+          if (text) segments = [[text]];
+        } catch (err) {
+          if (/not installed/i.test(err.message)) this.mathRecognizer = false; // don't ask again
+          this.logger.error('Math recognizer unavailable, using handwriting recognition', err.message);
+        }
+      }
+      if (!segments) {
+        // Powers (the small raised 2 in x²) are read on their own and written as ^( ).
+        segments = [];
+        for (const run of splitScripts(clean)) {
+          const read = await this.input.recognizeInk(run.strokes);
+          if (run.sup) segments.push(['^('], ...read, [')']);
+          else segments.push(...read);
+        }
       }
       const res = interpretInk(segments);
       if (res.status === 'compute') {
