@@ -13,7 +13,8 @@
 //             !|dblclick|<x>,<y>                  (physical double-click on empty desktop space)
 //
 //             <id>|ok|<base64>                    (reply to "ink": handwriting candidates;
-//                                                  reply to "mathink": MathML from Windows' Math Recognizer)
+//                                                  reply to "mathink": MathML from Windows' Math Recognizer;
+//                                                  reply to "uitree": the front window's elements as JSON)
 //
 // Build with `npm run build:native` (scripts/build-native.js lists the references).
 
@@ -441,6 +442,209 @@ internal static class Speech
     }
 }
 
+/// <summary>
+/// Reads the screen the way a screen reader does (UI Automation): the buttons, links, boxes,
+/// menus and text of the front window, with their names, states and exact rectangles. Far faster
+/// and more exact than having the AI look at a screenshot. The elements of the latest reading are
+/// kept so that actions can name them by number.
+/// </summary>
+internal static class ScreenReader
+{
+    [StructLayout(LayoutKind.Sequential)]
+    struct RECT { public int Left, Top, Right, Bottom; }
+
+    delegate bool EnumProc(IntPtr h, IntPtr p);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc fn, IntPtr p);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+    [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr h, int index);
+    [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attr, out int value, int size);
+
+    static readonly object Gate = new object();
+    static List<AutomationElement> last = new List<AutomationElement>();
+    static readonly HashSet<string> Shell = new HashSet<string> { "Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd", "NotifyIconOverflowWindow" };
+
+    /// <summary>The front-most real window on this screen area that isn't Bigfoot's own.</summary>
+    static IntPtr TopWindow(uint excludePid, RECT area)
+    {
+        IntPtr found = IntPtr.Zero;
+        EnumWindows((h, p) =>
+        {
+            if (!IsWindowVisible(h) || IsIconic(h)) return true;
+            uint pid; GetWindowThreadProcessId(h, out pid);
+            if (pid == excludePid) return true;
+            int cloaked; if (DwmGetWindowAttribute(h, 14, out cloaked, 4) == 0 && cloaked != 0) return true;
+            if ((GetWindowLong(h, -20) & 0x80) != 0) return true; // tool windows (tooltips, overlays)
+            var cls = new StringBuilder(256); GetClassName(h, cls, cls.Capacity);
+            if (Shell.Contains(cls.ToString())) return true;
+            RECT r; if (!GetWindowRect(h, out r) || r.Right - r.Left < 80 || r.Bottom - r.Top < 60) return true;
+            if (r.Right <= area.Left || r.Left >= area.Right || r.Bottom <= area.Top || r.Top >= area.Bottom) return true;
+            found = h;
+            return false;
+        }, IntPtr.Zero);
+        return found;
+    }
+
+    static string Esc(string s)
+    {
+        if (s == null) return "";
+        var b = new StringBuilder(s.Length + 8);
+        foreach (char c in s)
+        {
+            if (c == '"' || c == '\\') { b.Append('\\'); b.Append(c); }
+            else if (c < 0x20) b.Append(' ');
+            else b.Append(c);
+        }
+        return b.ToString();
+    }
+
+    static object Cached(AutomationElement e, AutomationProperty p)
+    {
+        try { object v = e.GetCachedPropertyValue(p, true); return v == AutomationElement.NotSupported ? null : v; } catch { return null; }
+    }
+
+    static string OnWorker(Func<string> fn, int ms, string slow)
+    {
+        string result = null;
+        Exception failure = null;
+        var worker = new Thread(() => { try { result = fn(); } catch (Exception ex) { failure = ex; } });
+        worker.IsBackground = true;
+        worker.SetApartmentState(ApartmentState.MTA);
+        worker.Start();
+        if (!worker.Join(ms)) throw new TimeoutException(slow);
+        if (failure != null) throw failure;
+        return result;
+    }
+
+    /// <summary>JSON: { window, app, items: [{ t, n, v, r: [x, y, w, h], s }] } in physical pixels.</summary>
+    public static string Read(uint excludePid, int x0, int y0, int x1, int y1, int max)
+    {
+        return OnWorker(() => ReadOnThisThread(excludePid, x0, y0, x1, y1, max), 10000, "reading the screen took too long");
+    }
+
+    static string ReadOnThisThread(uint excludePid, int x0, int y0, int x1, int y1, int max)
+    {
+        var area = new RECT { Left = x0, Top = y0, Right = x1, Bottom = y1 };
+        IntPtr h = TopWindow(excludePid, area);
+        var items = new List<AutomationElement>();
+        var json = new StringBuilder();
+        string title = "", app = "";
+        if (h != IntPtr.Zero)
+        {
+            var t = new StringBuilder(512); GetWindowText(h, t, t.Capacity); title = t.ToString();
+            uint pid; GetWindowThreadProcessId(h, out pid);
+            try { app = System.Diagnostics.Process.GetProcessById((int)pid).ProcessName; } catch { }
+        }
+        json.Append("{\"window\":\"").Append(Esc(title)).Append("\",\"app\":\"").Append(Esc(app)).Append("\",\"items\":[");
+        if (h != IntPtr.Zero)
+        {
+            var root = AutomationElement.FromHandle(h);
+            var cr = new CacheRequest();
+            foreach (var p in new AutomationProperty[] {
+                AutomationElement.NameProperty, AutomationElement.ControlTypeProperty, AutomationElement.BoundingRectangleProperty,
+                AutomationElement.IsEnabledProperty, AutomationElement.HasKeyboardFocusProperty, AutomationElement.IsPasswordProperty,
+                AutomationElement.IsInvokePatternAvailableProperty, AutomationElement.IsValuePatternAvailableProperty,
+                AutomationElement.IsTogglePatternAvailableProperty, AutomationElement.IsExpandCollapsePatternAvailableProperty,
+                AutomationElement.IsSelectionItemPatternAvailableProperty,
+                ValuePattern.ValueProperty, ValuePattern.IsReadOnlyProperty, TogglePattern.ToggleStateProperty,
+                ExpandCollapsePattern.ExpandCollapseStateProperty, SelectionItemPattern.IsSelectedProperty })
+                cr.Add(p);
+            AutomationElementCollection all;
+            using (cr.Activate())
+            {
+                var cond = new AndCondition(
+                    new PropertyCondition(AutomationElement.IsOffscreenProperty, false),
+                    new PropertyCondition(AutomationElement.IsControlElementProperty, true));
+                all = root.FindAll(TreeScope.Descendants, cond);
+            }
+            bool first = true;
+            foreach (AutomationElement e in all)
+            {
+                if (items.Count >= max) break;
+                object rv = Cached(e, AutomationElement.BoundingRectangleProperty);
+                if (!(rv is System.Windows.Rect)) continue;
+                var rect = (System.Windows.Rect)rv;
+                if (rect.IsEmpty || rect.Width < 2 || rect.Height < 2) continue;
+                if (rect.Right <= x0 || rect.Left >= x1 || rect.Bottom <= y0 || rect.Top >= y1) continue;
+                var type = Cached(e, AutomationElement.ControlTypeProperty) as ControlType;
+                string tname = type == null ? "Custom" : type.ProgrammaticName.Replace("ControlType.", "");
+                string name = (Cached(e, AutomationElement.NameProperty) as string) ?? "";
+                bool password = Equals(Cached(e, AutomationElement.IsPasswordProperty), true);
+                bool hasValue = Equals(Cached(e, AutomationElement.IsValuePatternAvailableProperty), true);
+                string value = hasValue && !password ? (Cached(e, ValuePattern.ValueProperty) as string) ?? "" : "";
+                var s = new StringBuilder();
+                if (Equals(Cached(e, AutomationElement.IsEnabledProperty), false)) s.Append('d');
+                if (Equals(Cached(e, AutomationElement.HasKeyboardFocusProperty), true)) s.Append('f');
+                if (password) s.Append('p');
+                if (Equals(Cached(e, AutomationElement.IsInvokePatternAvailableProperty), true)) s.Append('i');
+                if (hasValue && !Equals(Cached(e, ValuePattern.IsReadOnlyProperty), true)) s.Append('w');
+                object toggle = Cached(e, TogglePattern.ToggleStateProperty);
+                if (toggle is ToggleState) s.Append((ToggleState)toggle == ToggleState.On ? 'c' : 'u');
+                object exp = Cached(e, ExpandCollapsePattern.ExpandCollapseStateProperty);
+                if (exp is ExpandCollapseState && (ExpandCollapseState)exp != ExpandCollapseState.LeafNode) s.Append((ExpandCollapseState)exp == ExpandCollapseState.Collapsed ? 'x' : 'o');
+                if (Equals(Cached(e, SelectionItemPattern.IsSelectedProperty), true)) s.Append('s');
+                if (name.Length > 200) name = name.Substring(0, 200);
+                if (value.Length > 200) value = value.Substring(0, 200);
+                if (!first) json.Append(',');
+                first = false;
+                json.Append("{\"t\":\"").Append(tname).Append("\",\"n\":\"").Append(Esc(name)).Append("\",\"v\":\"").Append(Esc(value))
+                    .Append("\",\"r\":[").Append((int)rect.Left).Append(',').Append((int)rect.Top).Append(',').Append((int)rect.Width).Append(',').Append((int)rect.Height)
+                    .Append("],\"s\":\"").Append(s).Append("\"}");
+                items.Add(e);
+            }
+        }
+        json.Append("]}");
+        lock (Gate) last = items;
+        return json.ToString();
+    }
+
+    /// <summary>Acts on element number i (from 0) of the latest reading.</summary>
+    public static string Act(int index, string action, string arg)
+    {
+        AutomationElement e;
+        lock (Gate)
+        {
+            if (index < 0 || index >= last.Count) throw new ArgumentException("no such element; read the screen again");
+            e = last[index];
+        }
+        try
+        {
+            return OnWorker(() =>
+            {
+                switch (action)
+                {
+                    case "rect":
+                        {
+                            var r = e.Current.BoundingRectangle;
+                            if (r.IsEmpty || e.Current.IsOffscreen) return "";
+                            return (int)r.Left + "," + (int)r.Top + "," + (int)r.Width + "," + (int)r.Height;
+                        }
+                    case "focus": e.SetFocus(); return null;
+                    case "invoke": ((InvokePattern)e.GetCurrentPattern(InvokePattern.Pattern)).Invoke(); return null;
+                    case "toggle": ((TogglePattern)e.GetCurrentPattern(TogglePattern.Pattern)).Toggle(); return null;
+                    case "expand": ((ExpandCollapsePattern)e.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand(); return null;
+                    case "collapse": ((ExpandCollapsePattern)e.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Collapse(); return null;
+                    case "select": ((SelectionItemPattern)e.GetCurrentPattern(SelectionItemPattern.Pattern)).Select(); return null;
+                    case "scrollinto": ((ScrollItemPattern)e.GetCurrentPattern(ScrollItemPattern.Pattern)).ScrollIntoView(); return null;
+                    case "setvalue": ((ValuePattern)e.GetCurrentPattern(ValuePattern.Pattern)).SetValue(arg); return null;
+                    case "value":
+                        {
+                            object p;
+                            return e.TryGetCurrentPattern(ValuePattern.Pattern, out p) ? ((ValuePattern)p).Current.Value : "";
+                        }
+                    default: throw new ArgumentException("unknown element action " + action);
+                }
+            }, 5000, "the app didn't respond");
+        }
+        catch (ElementNotAvailableException) { throw new InvalidOperationException("that element is gone; read the screen again"); }
+        catch (InvalidOperationException ex) { throw new InvalidOperationException("that element can't " + action + " (" + ex.Message + ")"); }
+    }
+}
+
 internal static class InputHelper
 {
     // ------------------------------------------------------------------ Win32
@@ -594,6 +798,10 @@ internal static class InputHelper
             case "mathink":
                 if (!MathRecognizer.Available) throw new InvalidOperationException("Windows Math Recognizer is not installed");
                 return Convert.ToBase64String(Encoding.UTF8.GetBytes(MathRecognizer.Recognize(TextArg(p, 2))));
+            case "uitree": // excluded pid, screen area x0,y0,x1,y1, max elements
+                return Convert.ToBase64String(Encoding.UTF8.GetBytes(ScreenReader.Read(uint.Parse(Arg(p, 2)), IntArg(p, 3), IntArg(p, 4), IntArg(p, 5), IntArg(p, 6), IntArg(p, 7))));
+            case "uiact": // element number, action, base64 argument
+                return Convert.ToBase64String(Encoding.UTF8.GetBytes(ScreenReader.Act(IntArg(p, 2), Arg(p, 3), p.Length > 4 ? TextArg(p, 4) : "") ?? ""));
             case "activate": return Activate(new IntPtr(long.Parse(Arg(p, 2)))) ? "1" : "0";
             case "title":
                 {
