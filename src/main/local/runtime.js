@@ -91,6 +91,7 @@ class LocalRuntime extends EventEmitter {
     this.proc = null;
     this.starting = null;
     this.endpoint = null;
+    this.slotHolds = null;
     this.idleTimer = null;
     this.log = [];
     this.busy = 0;
@@ -164,6 +165,18 @@ class LocalRuntime extends EventEmitter {
     if (this.manager.paths()) this.ensure().catch(() => {});
   }
 
+  /**
+   * Requests to the model one at a time, in order. The server has a single conversation slot: a
+   * math reading that slipped in between reading the instructions and saving them got saved in
+   * their place, and every request after that re-read the instructions (15 minutes each).
+   * slotHolds names what the slot holds now (the saved instructions' file, or null).
+   */
+  exclusive(fn) {
+    const run = (this.queue || Promise.resolve()).then(() => this.use(fn));
+    this.queue = run.catch(() => {});
+    return run;
+  }
+
   /** Keeps the server from idling out while fn runs. */
   async use(fn) {
     this.busy++;
@@ -189,6 +202,7 @@ class LocalRuntime extends EventEmitter {
   stop() {
     clearTimeout(this.idleTimer);
     this.endpoint = null;
+    this.slotHolds = null;
     this.stopping = true;
     if (this.proc) {
       const p = this.proc;
@@ -254,7 +268,7 @@ class LocalRuntime extends EventEmitter {
       proc.once('error', (err) => reject(new RuntimeError(`The local AI couldn’t start: ${err.message}`)));
       proc.once('exit', (code) => {
         const wasReady = this.proc === proc && Boolean(this.endpoint);
-        if (this.proc === proc) { this.proc = null; this.endpoint = null; this.emit('state', 'stopped'); }
+        if (this.proc === proc) { this.proc = null; this.endpoint = null; this.slotHolds = null; this.emit('state', 'stopped'); }
         if (wasReady && !this.stopping) this.recover(code);
         reject(new RuntimeError(explainExit(code, this.log)));
       });

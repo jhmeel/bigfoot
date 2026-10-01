@@ -37,12 +37,24 @@
     talk.dataset.label = on ? 'Stop talking' : 'Talk (stays on until you stop it)';
   });
 
+  // While the AI is starting or getting ready for first use, the tools wait (Clear still works).
+  let blocked = null;
+  api.on('tools-blocked', (why) => {
+    blocked = why || null;
+    tray.querySelectorAll('button').forEach((b) => {
+      const off = Boolean(blocked) && b.dataset.tool !== 'clear';
+      b.disabled = off;
+      b.setAttribute('aria-disabled', String(off));
+    });
+    tray.classList.toggle('waiting', Boolean(blocked));
+  });
+
   tray.addEventListener('mouseenter', () => { hovering = true; clearTimeout(timer); });
   tray.addEventListener('mouseleave', () => { hovering = false; tip.classList.remove('show'); armIdle(); });
   tray.querySelectorAll('button').forEach((b) => {
     b.addEventListener('click', () => close(b.dataset.tool));
     b.addEventListener('mouseenter', () => {
-      tip.textContent = b.dataset.label;
+      tip.textContent = b.disabled && blocked ? `${blocked} Available when it’s done.` : b.dataset.label;
       const r = b.getBoundingClientRect();
       tip.style.transform = '';
       tip.classList.add('show');

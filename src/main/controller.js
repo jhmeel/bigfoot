@@ -62,6 +62,7 @@ class Controller {
   setVoiceMode(on) {
     if (on === this.voiceMode) return;
     if (on && !this.requireKey()) return;
+    if (on && this.blockedUntilReady()) return;
     this.voiceMode = on;
     this.windows.voiceMode = on;
     this.windows.broadcast('voice-mode', on);
@@ -274,6 +275,10 @@ class Controller {
   async startListening(source) {
     if (this.state === 'responding') this.finishReply();
     if (this.state !== 'idle') return;
+    if (this.blockedUntilReady()) {
+      if (this.voiceMode) this.setVoiceMode(false);
+      return;
+    }
     if (this.provider() === 'local') this.runtime.warm();
     try {
       await this.audio.startRecording({ vad: source !== 'ptt', patient: source === 'voice' });
@@ -452,8 +457,30 @@ class Controller {
     this.windows.showToolTray(screen.screenToDipPoint(physical));
   }
 
+  /**
+   * While the local AI is starting, or reading its instructions for the first time, its tools wait:
+   * anything asked now would only queue behind that (up to 15 minutes on a PC without a graphics
+   * card). Returns what to tell the user, or null when ready.
+   */
+  aiNotReady() {
+    if (this.provider() !== 'local') return null;
+    const s = this.runtime.status();
+    if (s.state === 'loading') return `Bigfoot’s AI is still starting (${s.percent}%).`;
+    if (s.state === 'preparing') return `Bigfoot is getting ready for first use (${s.percent ? `${s.percent}%` : 'one time only'}).`;
+    return null;
+  }
+
+  /** True (after telling the user) when the tools have to wait for the AI. */
+  blockedUntilReady() {
+    const why = this.aiNotReady();
+    if (!why) return false;
+    this.showInfo('Getting ready', `${why} The tools turn on as soon as it’s done.`);
+    return true;
+  }
+
   pickTool(tool) {
     this.windows.hideToolTray();
+    if (tool && tool !== 'clear' && this.blockedUntilReady()) return;
     switch (tool) {
       case 'talk':
         this.setVoiceMode(!this.voiceMode);
@@ -735,6 +762,7 @@ class Controller {
     if (!text) return { ok: false };
     if (this.agent.running) { this.showInfo('Still working', 'Press Esc to stop the current task first.'); return { ok: false }; }
     if (!this.requireKey()) { this.setState('idle'); return { ok: false }; }
+    if (this.blockedUntilReady()) { this.setState('idle'); return { ok: false }; }
     if (this.state === 'responding') this.finishReply();
 
     const region = this.pendingRegion;
