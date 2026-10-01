@@ -264,6 +264,7 @@
     const top = below + 44 < innerHeight ? below : Math.max(12, r.y - 56);
     askForm.style.left = `${Math.max(16, Math.min(r.x + r.width / 2 - W / 2, innerWidth - W - 16))}px`;
     askForm.style.top = `${top}px`;
+    askInput.placeholder = r.voice ? 'Say or type your question…' : 'Ask about this area…';
     askForm.hidden = false;
     setTimeout(() => askInput.focus(), 30);
   }
@@ -280,6 +281,14 @@
     if (e.key === 'Escape') { e.preventDefault(); showAsk(null); api.send('overlay:region-ask', ''); }
   });
   document.getElementById('region-ask-close').addEventListener('click', () => { showAsk(null); api.send('overlay:region-ask', ''); });
+  // Clicking elsewhere with nothing typed means never mind (in Talk mode the question may still be spoken).
+  let shownAt = 0;
+  new MutationObserver(() => { if (!askForm.hidden) shownAt = Date.now(); }).observe(askForm, { attributes: true, attributeFilter: ['hidden'] });
+  window.addEventListener('blur', () => {
+    if (askForm.hidden || askInput.value.trim() || askInput.placeholder.startsWith('Say') || Date.now() - shownAt < 800) return;
+    showAsk(null);
+    api.send('overlay:region-ask', '');
+  });
 
   api.on('region', (r) => {
     if (!r || (r.displayId != null && r.displayId !== displayId)) {

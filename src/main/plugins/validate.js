@@ -42,7 +42,7 @@ function checkSchema(name, schema) {
   return { errors, warnings };
 }
 
-function loadInChild(file, { execPath = process.execPath, timeoutMs = 8000 } = {}) {
+function loadInChild(file, { execPath = process.execPath, timeoutMs = 15000 } = {}) {
   return new Promise((resolve) => {
     const child = path.join(__dirname, 'validate-child.js').replace('app.asar', 'app.asar.unpacked');
     execFile(execPath, [child, file], {

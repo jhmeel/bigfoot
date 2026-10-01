@@ -159,6 +159,43 @@
   api.on('state', setState);
   api.on('log', addEntry);
   api.on('log-live', ({ text }) => streamText(text));
+
+  // While the AI loads (at startup, after a model change), questions wait for it: say so.
+  function renderLoader(status) {
+    if (!status) return;
+    const { ai, voice } = status;
+    const box = $('ai-loading');
+    const loading = ai.state === 'loading';
+    box.hidden = !(loading || ai.state === 'failed');
+    box.dataset.state = ai.state;
+    $('ai-loading-retry').hidden = ai.state !== 'failed';
+    if (loading) {
+      $('ai-loading-text').textContent = `Loading the AI · ${ai.label}`;
+      $('ai-loading-pct').textContent = `${ai.percent}%`;
+      $('ai-loading-bar').style.width = `${ai.percent}%`;
+      const secs = Math.round((ai.elapsed || 0) / 1000);
+      $('ai-loading-note').textContent = `You can type now; I’ll answer as soon as it’s loaded.${secs > 30 ? ' This PC is busy, so it’s taking longer: closing a few browser tabs helps.' : ''}${voice.state === 'loading' ? ' Voice is starting too.' : ''}`;
+    } else if (ai.state === 'failed') {
+      $('ai-loading-text').textContent = 'The AI couldn’t load';
+      $('ai-loading-pct').textContent = '';
+      $('ai-loading-note').textContent = ai.label;
+    }
+  }
+  api.on('loader', renderLoader);
+  api.invoke('loader:status').then(renderLoader).catch(() => {});
+  $('ai-loading-retry').addEventListener('click', () => { $('ai-loading-retry').hidden = true; api.invoke('loader:retry'); });
+  // The area the user marked, attached to the question it belongs to.
+  api.on('log-image', ({ src }) => {
+    if (!/^data:image\/(png|jpeg);base64,/.test(String(src))) return;
+    const bubbles = $('log').querySelectorAll('.msg.user');
+    const last = bubbles[bubbles.length - 1];
+    if (!last) return;
+    const img = el('img', 'msg-image');
+    img.src = src;
+    img.alt = 'The area you marked';
+    img.addEventListener('load', scrollDown);
+    last.prepend(img);
+  });
   api.on('settings', (s) => { if (s && s.models) { $('prompt').placeholder = `Message ${s.assistantName}`; renderSetup(); } });
   api.on('local:progress', (st) => { if (st.status === 'ready' || st.status === 'none') renderSetup(); });
   api.on('region', (r) => {

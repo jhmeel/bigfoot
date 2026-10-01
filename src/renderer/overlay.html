@@ -67,6 +67,13 @@
       <span class="ink-sep"></span>
       <button id="ink-talk" class="talk" title="Talk: ask about your drawing, e.g. “neaten my circle” (or hold Ctrl + Alt)"><svg viewBox="0 0 20 20"><rect x="7" y="2.5" width="6" height="10" rx="3"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5"/></svg></button>
       <span class="ink-sep"></span>
+      <button id="ink-share" title="Share your drawing" aria-haspopup="menu" aria-expanded="false"><svg viewBox="0 0 20 20"><path d="M10 12.5V3M6.5 6.5L10 3l3.5 3.5"/><path d="M6 9.5H5a1.5 1.5 0 0 0-1.5 1.5v4.5A1.5 1.5 0 0 0 5 17h10a1.5 1.5 0 0 0 1.5-1.5V11A1.5 1.5 0 0 0 15 9.5h-1"/></svg></button>
+      <div class="ink-menu" id="ink-share-menu" role="menu" hidden>
+        <button role="menuitem" data-share="copy">Copy with screen <kbd>Ctrl+C</kbd></button>
+        <button role="menuitem" data-share="png">Save as picture (PNG)</button>
+        <button role="menuitem" data-share="svg">Save as vector (SVG)</button>
+        <div class="ink-menu-note" id="ink-share-note" aria-live="polite"></div>
+      </div>
       <button id="ink-undo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 20 20"><path d="M7.5 5L4 8.5 7.5 12"/><path d="M4.5 8.5h7a4.5 4.5 0 0 1 0 9H9"/></svg></button>
       <button id="ink-redo" title="Redo (Ctrl+Y)"><svg viewBox="0 0 20 20"><path d="M12.5 5L16 8.5 12.5 12"/><path d="M15.5 8.5h-7a4.5 4.5 0 0 0 0 9H11"/></svg></button>
       <button id="ink-clear" title="Clear all (Delete)"><svg viewBox="0 0 20 20"><path d="M4 6h12M8 6V4h4v2M5.5 6l.7 10c.1.8.7 1.4 1.5 1.4h4.6c.8 0 1.4-.6 1.5-1.4l.7-10"/></svg></button>
@@ -96,7 +103,14 @@
     <div class="banner-progress"></div>
   </div>
 
+  <div id="ai-loader" role="status" aria-live="polite">
+    <div class="ail-row"><span class="ail-spin" aria-hidden="true"></span><span class="ail-text"></span><span class="ail-pct"></span></div>
+    <div class="ail-bar"><i></i></div>
+    <div class="ail-sub"></div>
+  </div>
+
   <script src="overlay.js"></script>
+  <script src="overlay-loader.js"></script>
   <script src="overlay-draw.js"></script>
   <script src="overlay-math.js"></script>
   <script src="overlay-ink.js"></script>

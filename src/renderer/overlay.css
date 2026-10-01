@@ -146,6 +146,18 @@ body.selecting #select-layer { pointer-events: auto; cursor: crosshair; backgrou
 #region-ask svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* ---------------------------------------------------------------- math tool */
+.math-working {
+  position: absolute; margin: 0; padding: 10px 14px 10px 34px; max-width: min(560px, 60vw);
+  border-radius: 12px; background: rgba(22, 24, 29, 0.92); border: 1px solid rgba(125, 178, 255, 0.28);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35); color: #e8ecf3;
+  font: 400 14px/1.55 var(--font); font-variant-numeric: tabular-nums;
+  opacity: 0; transform: translateY(-4px); pointer-events: none;
+  transition: opacity 220ms ease-out, transform 320ms var(--spring);
+}
+.math-working.show { opacity: 1; transform: none; }
+.math-working li { padding-left: 2px; white-space: pre-wrap; }
+.math-working li::marker { color: #7db2ff; font-weight: 600; }
+.math-working li:last-child { color: #fff; font-weight: 600; }
 #math-layer { position: fixed; inset: 0; display: none; }
 body.math #math-layer { display: block; pointer-events: auto; cursor: crosshair; background: rgba(6, 10, 20, 0.28); }
 #math-ink { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -157,8 +169,30 @@ body.math #math-layer { display: block; pointer-events: auto; cursor: crosshair;
   transition: opacity 220ms ease-out, transform 360ms var(--spring);
 }
 .math-answer.show { opacity: 1; transform: translateY(-50%); }
-.math-answer[data-state='thinking'] { width: 0.6em; height: 0.6em; border-radius: 50%; margin-top: -0.3em; transform: none;
-  border: 3px solid rgba(125, 178, 255, 0.25); border-top-color: #7db2ff; animation: spin 0.8s linear infinite; }
+.math-answer[data-state='thinking'] { width: 14px; height: 14px; box-sizing: border-box; border-radius: 50%; margin-top: -7px; transform: none;
+  border: 2px solid rgba(125, 178, 255, 0.25); border-top-color: #7db2ff; animation: spin 0.8s linear infinite; }
+
+/* ---------------------------------------------------------------- startup loader */
+#ai-loader {
+  position: fixed; right: 18px; bottom: 18px; z-index: 40; width: 300px; padding: 11px 13px 10px;
+  border-radius: 13px; background: rgba(20, 22, 27, 0.95); border: 1px solid rgba(125, 178, 255, 0.25);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45); color: #e8ecf3; font: 500 12.5px/1.35 var(--font);
+  opacity: 0; transform: translateY(8px); pointer-events: none;
+  transition: opacity 260ms ease-out, transform 360ms var(--spring);
+}
+#ai-loader.show { opacity: 1; transform: none; }
+.ail-row { display: flex; align-items: center; gap: 8px; }
+.ail-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ail-pct { color: #8fbaff; font-variant-numeric: tabular-nums; }
+.ail-spin { width: 12px; height: 12px; flex: none; box-sizing: border-box; border-radius: 50%;
+  border: 2px solid rgba(125, 178, 255, 0.25); border-top-color: #7db2ff; animation: spin 0.8s linear infinite; }
+#ai-loader[data-state='ready'] .ail-spin { animation: none; border-color: #32d74b; background: #32d74b; }
+#ai-loader[data-state='failed'] .ail-spin { animation: none; border-color: #ff6961; background: #ff6961; }
+.ail-bar { height: 3px; margin: 8px 0 6px; border-radius: 2px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.ail-bar i { display: block; height: 100%; width: 0; border-radius: 2px; background: linear-gradient(90deg, #3380ff, #7db2ff); transition: width 900ms cubic-bezier(0.22, 1, 0.36, 1); }
+#ai-loader[data-state='failed'] .ail-bar { display: none; }
+.ail-sub { color: #9aa3ad; font-size: 11.5px; }
+.ail-sub:empty { display: none; }
 .math-answer[data-state='right'] { color: #32d74b; text-shadow: 0 0 12px rgba(50, 215, 75, 0.7), 0 2px 4px rgba(0, 0, 0, 0.6); }
 .math-answer[data-state='wrong'] { color: #ff6961; text-shadow: 0 0 12px rgba(255, 69, 58, 0.7), 0 2px 4px rgba(0, 0, 0, 0.6); }
 .math-answer[data-state='wrong']::before { content: '✗ '; font-size: 0.7em; }
@@ -206,6 +240,20 @@ body.ink.ink-through #ink-layer { pointer-events: none; cursor: default; backgro
   width: 32px; height: 32px; flex: none; border: 0; border-radius: 9px; background: transparent; color: #c9cfcc;
   display: flex; align-items: center; justify-content: center; transition: background 120ms, color 120ms, transform 80ms;
 }
+.ink-menu {
+  position: absolute; top: calc(100% + 6px); right: 90px; z-index: 4; display: flex; flex-direction: column; gap: 2px;
+  min-width: 230px; padding: 5px; border-radius: 12px; background: rgba(24, 26, 28, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+}
+.ink-menu[hidden] { display: none; }
+.ink-bar .ink-menu button {
+  width: auto; height: 32px; justify-content: space-between; gap: 16px; padding: 0 10px; font: 500 13px/1 var(--font); color: #e8ecf3;
+}
+.ink-menu kbd { font: 500 11px/1 var(--font); color: #8f969c; }
+.ink-menu-note { padding: 4px 10px 2px; font: 500 12px/1.4 var(--font); color: #8fbaff; }
+.ink-menu-note:empty { display: none; }
+.ink-menu-note[data-state='error'] { color: #ff8a80; }
+.ink-bar .ink-menu-note button { display: inline-flex; height: auto; padding: 0 4px; color: #fff; text-decoration: underline; font-size: 12px; }
 .ink-bar button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .ink-bar button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.09); color: #fff; }
 .ink-bar button:active:not(:disabled) { transform: scale(0.92); }

@@ -1,12 +1,16 @@
 'use strict';
 // Coordinates everything the user experiences: voice input, tasks, replies, selection, errors.
 
-const { screen, app, Notification } = require('electron');
+const { screen, app, Notification, nativeImage, clipboard, shell } = require('electron');
+const fs = require('fs');
 const path = require('path');
+const { strokesToSvg } = require('./plugins/lib/vector');
 const { ScreenTarget } = require('./capture');
 const { AgentError, toUserError } = require('./agent');
 const { resolveProvider } = require('./llm');
-const { readInk, interpretInk } = require('./mathink');
+const { readInk, interpretInk, splitScripts, pretty } = require('./mathink');
+const { solveSystem } = require('./math');
+const cas = require('./cas');
 const voice = require('./voice');
 
 const PTT_DELAY_MS = 150;      // ignore quick Ctrl+Alt shortcuts; only a hold starts listening
@@ -73,6 +77,7 @@ class Controller {
     clearTimeout(this.voiceTimer);
     if (!this.voiceMode) return;
     this.voiceTimer = setTimeout(() => {
+      if (this.audio.isBusy()) { this.continueVoice(); return; } // never listen to our own voice
       if (this.voiceMode && this.state === 'idle' && !this.agent.running && !this.selecting) this.startListening('voice');
     }, 400);
   }
@@ -193,7 +198,11 @@ class Controller {
         if (!this.pttDown) return;
         if (this.agent.running) { this.bubble('still working on it. press esc to stop me', 2500); return; }
         if (!this.requireKey()) return;
-        if (this.state === 'listening' && this.listenSource !== 'ptt') { this.listenSource = 'ptt'; return; }
+        if (this.state === 'listening' && this.listenSource !== 'ptt') {
+          this.listenSource = 'ptt'; // Talk was already listening: this recording now ends when the keys are let go
+          if (!this.ink) this.setSelecting('ptt');
+          return;
+        }
         this.startListening('ptt');
       }, PTT_DELAY_MS);
     } else if (!down && this.pttDown) {
@@ -237,7 +246,7 @@ class Controller {
     if (source === 'ptt' && !this.ink) this.setSelecting('ptt');
   }
 
-  async finishListening({ cancel = false } = {}) {
+  async finishListening({ cancel = false, keepRegion = false } = {}) {
     if (this.state !== 'listening') return;
     const source = this.listenSource;
     this.listenSource = null;
@@ -254,7 +263,7 @@ class Controller {
     const tooShort = Date.now() - this.recordingStartedAt < MIN_RECORDING_MS;
     if (cancel || !rec || !rec.wav || !rec.heardSpeech || (tooShort && !this.pendingRegion)) {
       this.setState('idle');
-      if (cancel) this.clearRegion();
+      if (cancel && !keepRegion) this.clearRegion();
       else if (source === 'ptt' && tooShort) this.showInfo('Hold to talk', 'Keep holding Ctrl + Alt while you speak, then let go.');
       else if (this.pendingRegion) this.promptForRegionQuestion();
       return;
@@ -272,6 +281,11 @@ class Controller {
       this.setState('idle');
       if (this.pendingRegion) this.promptForRegionQuestion();
       else if (source !== 'voice') this.bubble('i didn’t catch that. try again?', 2500);
+      return;
+    }
+    if (source === 'voice' && this.audio.heardItself(text)) {
+      this.logger.info(`Ignored speech that was Bigfoot's own voice: "${text}"`);
+      this.setState('idle');
       return;
     }
     if (source === 'voice' && STOP_TALKING.test(text)) {
@@ -343,17 +357,21 @@ class Controller {
     }
   }
 
-  /** Ask right next to the marked area: a small box on the overlay, or just speak in Talk mode. */
+  /** Ask right next to the marked area: a small box on the overlay (in Talk mode, speaking works too). */
   promptForRegionQuestion() {
     if (!this.pendingRegion) return;
     const id = this.pendingRegion.displayId;
-    const ask = !this.voiceMode;
-    this.windows.broadcast('region', { ...this.pendingRegion, ask });
-    if (ask) {
-      this.regionAsking = id;
-      this.windows.setOverlaysInteractive(true, id);
-      this.windows.setOverlayFocus(id, true);
-    } else this.bubble('what about it?', 2500);
+    this.windows.broadcast('region', { ...this.pendingRegion, ask: true, voice: this.voiceMode });
+    this.regionAsking = id;
+    this.windows.setOverlaysInteractive(true, id);
+    this.windows.setOverlayFocus(id, true);
+  }
+
+  /** A question typed into the box next to the marked area. */
+  async askAboutRegion(text) {
+    if (!text) { this.clearRegion(); return; }
+    if (this.state === 'listening') await this.finishListening({ cancel: true, keepRegion: true }); // typed instead of spoken
+    await this.runTask(text, 'typed');
   }
 
   endRegionAsk() {
@@ -413,6 +431,7 @@ class Controller {
 
   /** Draw or math on one display; it takes the mouse and keyboard until closed. */
   startInk(mode, displayId, { tool = null, focus = true } = {}) {
+    if (mode === 'math') cas.compute('1').catch(() => {}); // load the math engine while the user writes
     if (this.ink && this.ink.mode === mode && this.ink.displayId === displayId) {
       // Already open (e.g. in pointer mode): pick up drawing again without losing it.
       if (focus) this.windows.setOverlayFocus(displayId, true);
@@ -467,8 +486,51 @@ class Controller {
     return Buffer.from(await this.audio.call('composite', { png, overlay, crop }, 15000));
   }
 
+  /**
+   * Share a drawing: 'copy' puts the screen with the drawing on the clipboard; 'png' saves that
+   * picture and 'svg' the drawing alone as vectors, both in Pictures › Bigfoot.
+   */
+  async shareDrawing(displayId, kind) {
+    const strokes = await this.inkRequest(displayId, { op: 'strokes' });
+    if (!Array.isArray(strokes) || !strokes.length) return { ok: false, message: 'Draw something first' };
+    const folder = path.join(app.getPath('pictures'), 'Bigfoot');
+    const stamp = new Date().toISOString().slice(0, 19).replace('T', ' ').replace(/:/g, '.');
+    try {
+      if (kind === 'svg') {
+        const out = strokesToSvg(strokes, { maxPoints: 400 });
+        fs.mkdirSync(folder, { recursive: true });
+        const file = path.join(folder, `Drawing ${stamp}.svg`);
+        fs.writeFileSync(file, out.svg);
+        this.activity.add('info', `Saved the drawing to ${file}`);
+        return { ok: true, message: 'Saved to Pictures › Bigfoot', file };
+      }
+      const display = screen.getAllDisplays().find((d) => d.id === displayId) || screen.getPrimaryDisplay();
+      const edge = Math.round(Math.max(display.bounds.width, display.bounds.height) * display.scaleFactor);
+      const target = new ScreenTarget(display, edge);
+      const png = await this.withDrawing(displayId, await target.capturePng(), null);
+      if (kind === 'copy') {
+        clipboard.writeImage(nativeImage.createFromBuffer(png));
+        return { ok: true, message: 'Copied. Paste it anywhere' };
+      }
+      fs.mkdirSync(folder, { recursive: true });
+      const file = path.join(folder, `Drawing ${stamp}.png`);
+      fs.writeFileSync(file, png);
+      this.activity.add('info', `Saved the drawing to ${file}`);
+      return { ok: true, message: 'Saved to Pictures › Bigfoot', file };
+    } catch (err) {
+      this.logger.error('Sharing the drawing failed', err.message);
+      return { ok: false, message: `Couldn’t share it: ${err.message}` };
+    }
+  }
+
+  revealFile(file) {
+    const folder = path.join(app.getPath('pictures'), 'Bigfoot');
+    if (typeof file === 'string' && path.resolve(file).startsWith(folder)) shell.showItemInFolder(file);
+  }
+
   /** The AI changing the user's drawing (the edit_drawing tool). */
   async editInk({ displayId, ...op }) {
+    if (this.ink && this.ink.mode === 'math') throw new Error('The user has the math tool open; drawing would close it. Tell them to close it first.');
     if (!this.ink || this.ink.mode !== 'draw' || this.ink.displayId !== displayId) {
       this.startInk('draw', displayId, { tool: 'pointer', focus: false });
     }
@@ -500,10 +562,38 @@ class Controller {
       .slice(0, 2000).filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y))).filter((s) => s.length);
     if (!clean.length) return { ok: true, text: '', status: 'unknown' };
     try {
-      return { ok: true, ...interpretInk(await this.input.recognizeInk(clean)) };
+      // Powers (the small raised 2 in x²) are read on their own and written as ^( ).
+      const segments = [];
+      for (const run of splitScripts(clean)) {
+        const read = await this.input.recognizeInk(run.strokes);
+        if (run.sup) segments.push(['^('], ...read, [')']);
+        else segments.push(...read);
+      }
+      const res = interpretInk(segments);
+      if (res.status === 'compute') {
+        try {
+          const r = await cas.compute(res.compute);
+          return { ok: true, ...res, status: 'solved', answer: r.decimal ? `${r.answer} ≈ ${r.decimal}` : r.answer, steps: await cas.working(res.compute) };
+        } catch {
+          return { ok: true, ...res, status: 'solve' }; // the model reads it from the image instead
+        }
+      }
+      return { ok: true, ...res };
     } catch (err) {
       this.logger.error('Handwriting recognition failed', err.message);
       return { ok: false, message: `Handwriting recognition isn’t available: ${err.message}` };
+    }
+  }
+
+  /** Linear equations on several lines, solved together (x + y = 5 and x − y = 1). */
+  solveMathSystem(expressions) {
+    try {
+      const list = (Array.isArray(expressions) ? expressions : []).slice(0, 10).map(String);
+      const r = solveSystem(list);
+      this.activity.add('info', `Math: ${list.map(pretty).join(' ; ')} → ${r.text}`);
+      return { ok: true, answer: r.text, steps: r.steps };
+    } catch (err) {
+      return { ok: false, message: err.message };
     }
   }
 
@@ -564,11 +654,12 @@ class Controller {
     this.panelLog('user', text);
     this.logger.audit('task', { source, chars: text.length, region: Boolean(region) });
     this.setState('processing');
-    this.bubble('');
+    this.bubble(this.provider() === 'local' && !this.runtime.running ? 'one moment, my AI is still loading…' : '');
     try {
       const result = await this.agent.run(text, { region: sentRegion, drawing });
       this.sendUsage();
       if (result.status === 'stopped') {
+        this.audio.stopSpeaking();
         this.setState('idle');
         this.bubble('okay, stopped.', 1800);
         return { ok: true };
@@ -594,6 +685,18 @@ class Controller {
     this.audio.feedStream(clean); // speak each sentence as soon as it's complete
     this.windows.send(this.windows.panel, 'log-live', { text: clean });
     this.windows.broadcast('bubble-live', { text: clean, displayId: this.agent.target ? this.agent.target.display.id : null });
+  }
+
+  /** The area the user marked, as a picture with their question in the chat. */
+  showRegionInChat(png) {
+    try {
+      let img = nativeImage.createFromBuffer(Buffer.from(png));
+      const { width } = img.getSize();
+      if (width > 640) img = img.resize({ width: 640, quality: 'good' });
+      this.windows.send(this.windows.panel, 'log-image', { src: `data:image/jpeg;base64,${img.toJPEG(82).toString('base64')}` });
+    } catch (err) {
+      this.logger.error('Couldn’t show the marked area in the chat', err.message);
+    }
   }
 
   /** The model's last words were a plan it's now being told to carry out: take them back. */

@@ -13,7 +13,17 @@ const path = require('path');
 const hardware = require('./hardware');
 
 const IDLE_MS = 10 * 60 * 1000;
-const START_TIMEOUT_MS = 4 * 60 * 1000;
+const START_TIMEOUT_MS = 8 * 60 * 1000; // no progress for this long: give up (a swapping PC goes quiet for minutes)
+const MAX_LOAD_MS = 20 * 60 * 1000;
+// What llama-server prints while loading, and roughly how far along that is.
+const LOAD_PHASES = [
+  [/common_params|system_info|init_listene|build:/, 7, 'Starting the AI engine'],
+  [/load_model: loading model/, 12, 'Reading the model'],
+  [/control-looking token|print_info|load_tensors/, 30, 'Loading the model'],
+  [/threadpool init|llama_context|kv_cache/i, 55, 'Preparing memory'],
+  [/clip_model_loader|mtmd|loaded multimodal/, 72, 'Loading vision'],
+  [/initializing, n_slots/, 90, 'Almost ready'],
+];
 const LOG_LINES = 40;
 const MAX_RESTARTS = 3;
 const RESTART_WINDOW_MS = 10 * 60 * 1000;
@@ -57,8 +67,21 @@ function freePort() {
   });
 }
 
+// On 8 GB PCs the model, Windows, and a browser compete for memory; running short makes Windows
+// swap and loading takes many minutes. There the working memory is smaller and compressed.
+const lowMemory = () => os.totalmem() < 12 * 1024 ** 3;
+
 function contextSize() {
-  return os.totalmem() >= 24 * 1024 ** 3 ? 16384 : 8192;
+  if (os.totalmem() >= 24 * 1024 ** 3) return 16384;
+  return lowMemory() ? 6144 : 8192;
+}
+
+/** KV cache in 8 bits (half the memory, no visible quality loss) and a small prompt cache. */
+function memoryArgs() {
+  return lowMemory()
+    // --no-repack: llama.cpp otherwise keeps a second, CPU-optimized copy of the weights.
+    ? ['--flash-attn', 'on', '--cache-type-k', 'q8_0', '--cache-type-v', 'q8_0', '--cache-ram', '256', '--no-repack']
+    : ['--cache-ram', '2048'];
 }
 
 class LocalRuntime extends EventEmitter {
@@ -75,7 +98,9 @@ class LocalRuntime extends EventEmitter {
     this.restarts = [];
     this.noLock = false;
     manager.on('removing', () => this.stop());
-    manager.on('installed', () => { this.stop(); this.preload(); });
+    // A new model replaces the loaded one straight away; no restart needed.
+    manager.on('removing', () => this.stop());
+    manager.on('installed', () => { this.stop(); this.pruneCache(null); this.preload(); }); // old model's saved prompts too
   }
 
   get running() { return Boolean(this.endpoint); }
@@ -198,6 +223,7 @@ class LocalRuntime extends EventEmitter {
       '--cache-reuse', '256', // reuse cached context even after older screenshots are dropped
       '--threads', String(threadCount()), '--threads-batch', String(threadCount()),
       '--slot-save-path', this.cacheDir(),
+      ...memoryArgs(),
       ...(this.tuning.cpuOnly ? ['--device', 'none'] : []),
       ...(this.tuning.lock && !this.noLock ? ['--load-mode', 'mmap+mlock'] : []),
     ];
@@ -207,8 +233,17 @@ class LocalRuntime extends EventEmitter {
     const proc = spawn(files.server, args, { cwd: files.cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     this.proc = proc;
     try { os.setPriority(proc.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* not critical */ }
+    this.loadStarted = Date.now();
+    this.lastPercent = 0;
+    this.failed = null;
+    this.progress(3, 'Starting');
     const keep = (d) => {
-      for (const line of String(d).split(/\r?\n/)) if (line.trim()) this.log.push(line.trim());
+      for (const line of String(d).split(/\r?\n/)) {
+        if (!line.trim()) continue;
+        this.log.push(line.trim());
+        const phase = LOAD_PHASES.find(([re]) => re.test(line));
+        if (phase) this.progress(phase[1], phase[2]);
+      }
       if (this.log.length > LOG_LINES) this.log.splice(0, this.log.length - LOG_LINES);
     };
     proc.stdout.on('data', keep);
@@ -235,12 +270,32 @@ class LocalRuntime extends EventEmitter {
         return this.launch();
       }
       if (this.logger) this.logger.error('Local AI failed to start', err.message, this.log.slice(-8).join('\n'));
+      this.failed = err.message;
+      this.emit('progress', { state: 'failed', percent: 0, label: err.message });
       throw err;
     }
     this.endpoint = { baseUrl, apiKey, model: files.id, ctx };
+    this.progress(100, 'Ready');
     this.emit('state', 'ready');
     this.touch();
     return this.endpoint;
+  }
+
+  /** Loading progress for the startup loader: never goes backwards within one load. */
+  progress(percent, label) {
+    if (percent < 100 && percent <= (this.lastPercent || 0)) return;
+    this.lastPercent = percent < 100 ? percent : 0;
+    this.lastLabel = label;
+    this.emit('progress', { state: percent >= 100 ? 'ready' : 'loading', percent, label, elapsed: Date.now() - (this.loadStarted || Date.now()) });
+  }
+
+  /** What the loader shows right now. */
+  status() {
+    if (this.endpoint) return { state: 'ready', percent: 100, label: 'Ready' };
+    if (this.starting) return { state: 'loading', percent: this.lastPercent || 3, label: this.lastLabel || 'Starting', elapsed: Date.now() - (this.loadStarted || Date.now()) };
+    if (this.failed) return { state: 'failed', percent: 0, label: this.failed };
+    if (!this.manager.paths()) return { state: 'none', percent: 0, label: 'No model installed' };
+    return { state: 'stopped', percent: 0, label: 'Not loaded' };
   }
 
   /** The server died on its own: bring it back, unless it keeps crashing. */
@@ -253,16 +308,31 @@ class LocalRuntime extends EventEmitter {
     setTimeout(() => this.preload(), 2000);
   }
 
+  /**
+   * Wait while the model loads. A busy PC can take many minutes, and killing a load that is still
+   * moving only starts it over from disk, so give up only when it stops making progress.
+   */
   async waitHealthy(baseUrl, apiKey) {
-    const deadline = Date.now() + START_TIMEOUT_MS;
-    while (Date.now() < deadline) {
+    const started = Date.now();
+    let lastProgress = Date.now();
+    let seen = this.log.length;
+    let lastLine = this.log[this.log.length - 1];
+    while (Date.now() - started < MAX_LOAD_MS) {
       try {
         const res = await fetch(`${baseUrl}/health`, { headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(3000) });
-        if (res.ok) return;
+        if (res.ok) {
+          if (this.logger) this.logger.info(`The local AI is ready (loaded in ${Math.round((Date.now() - started) / 1000)} s)`);
+          return;
+        }
       } catch { /* still loading */ }
+      const line = this.log[this.log.length - 1];
+      if (this.log.length !== seen || line !== lastLine) { seen = this.log.length; lastLine = line; lastProgress = Date.now(); }
+      if (Date.now() - lastProgress > START_TIMEOUT_MS) break; // no sign of life for minutes
       await new Promise((r) => setTimeout(r, 400));
     }
-    throw new RuntimeError('The local AI took too long to load. Try again, or choose a smaller model in Settings › Models.');
+    throw new RuntimeError(lowMemory()
+      ? 'The local AI couldn’t load: this PC is low on free memory. Close some apps (browser tabs use a lot) and try again.'
+      : 'The local AI took too long to load. Try again, or choose a smaller model in Settings › Models.');
   }
 }
 
@@ -272,7 +342,7 @@ function explainExit(code, log) {
     return 'There isn’t enough free memory to load the local AI. Close some apps, or choose a smaller model in Settings › Models.';
   }
   if (/failed to load model|error loading model|invalid magic|failed to read/i.test(text)) {
-    return 'The local AI model files look damaged. Remove the model in Settings › Models and download it again.';
+    return 'The local AI model files look damaged. Pick a model in Settings › Models to download a fresh copy.';
   }
   if (/address already in use|bind/i.test(text)) return 'The local AI couldn’t open its port. Try again.';
   const last = log.filter((l) => /error|fail/i.test(l)).slice(-1)[0];

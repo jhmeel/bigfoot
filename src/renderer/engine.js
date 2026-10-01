@@ -164,6 +164,9 @@
     if (finishSpeech) { finishSpeech(); finishSpeech = null; }
   }
 
+  // Bigfoot speaks with a female voice unless the user picks another.
+  const FEMALE_VOICE = /\b(zira|hazel|susan|aria|jenny|sonia|libby|michelle|ava|emma|clara|natasha|catherine|linda|heera|eva|elsa|hortense|julie|helena|laura|sabina|paulina|hedda|katja|irina|sarah|salli|joanna|kendra|kimberly|ivy|amy|nicole|olivia|female)\b/i;
+
   function voicesReady(timeoutMs = 6000) {
     return new Promise((resolve) => {
       const started = performance.now();
@@ -180,8 +183,12 @@
     stopAudio();
     const voices = await voicesReady();
     if (!voices.length) throw new Error('No Windows voices are installed.');
+    const female = (v) => FEMALE_VOICE.test(v.name);
+    const en = (v) => /^en/i.test(v.lang);
     const chosen = voices.find((v) => v.name === voice)
-      || voices.find((v) => /natural/i.test(v.name) && /^en/i.test(v.lang))
+      || voices.find((v) => female(v) && en(v) && /natural|online/i.test(v.name))
+      || voices.find((v) => female(v) && en(v))
+      || voices.find((v) => female(v))
       || voices.find((v) => v.default) || voices[0];
     // Sentence by sentence: very long utterances can stall on some Windows voices.
     const parts = String(text).match(/[^.!?]+[.!?]*\s*/g) || [String(text)];

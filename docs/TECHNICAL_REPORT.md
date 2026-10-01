@@ -1,4 +1,4 @@
-# Bigfoot 1.3.0 — Technical report
+# Bigfoot 1.4.0 — Technical report
 
 Scope: the move to an on-device AI (Qwen3-VL) as the default model, the tool tray, Draw and Math,
 continuous voice (Talk), the plugin validator, onboarding and settings changes, and the installer.
@@ -271,7 +271,7 @@ runs Bigfoot when done. Additions in this release:
 
 ## 9. Verification
 
-`npm test`: 52 tests across five suites, all passing.
+`npm test`: 54 tests across five suites, all passing.
 
 | Suite | Covers |
 |---|---|
@@ -290,6 +290,51 @@ the speech service; the math overlay reading and answering drawn strokes; the ne
 
 **Not yet verified end to end:** the model's pointing precision and its drawing edits (the pipeline
 around them is verified with scripted tool calls), and a full install/uninstall pass of the installer.
+
+## 9a. 1.4.0: loading on 8 GB PCs, startup loader, math engine
+
+**Why 4B "didn't run" on the test laptop (i5-8350U, 7.9 GB RAM, NVMe).** The production log showed
+every load killed by the 4-minute start timeout and restarted, over and over; llama-server took
+20–35 s just to print its parameters. Measured: the disk reads the 2.5 GB model in 5.5 s (457 MB/s),
+so the disk was not the problem. Free RAM was 2.7 GB (the Claude desktop app 1.3 GB, Chrome 1.1 GB,
+Bigfoot's own windows 0.7 GB), while 4B with an 8,192-token f16 KV cache needs ~3.4 GB, and
+llama.cpp's defaults add a CPU "repacked" second copy of the weights and a host prompt cache of up
+to 8 GB. Windows swapped: loads took 6.5–8 minutes and "12 × 7" took 28–61 s to answer. With the
+model file already in the OS cache the same load took 55 s, which confirms memory pressure as the
+cause.
+
+Changes (PCs under 12 GB): context 6,144; KV cache in q8_0 with flash attention; `--cache-ram 256`;
+`--no-repack` (one copy of the weights). The start watchdog no longer kills a load that is still
+printing progress; it gives up after 4 minutes without progress or 15 minutes in total, with a
+message that names the real cause. Honest limit: on an 8 GB PC with a browser and other heavy apps
+open, 4B stays slow; closing apps is the fix, and the loader says so.
+
+**Startup loader.** The runtime reports load phases parsed from llama-server's output (reading,
+loading, preparing memory, vision, almost ready) as a percentage; speech recognition reports its
+state too. A card in the corner of the primary screen and a bar in the chat show them until
+"Bigfoot is ready"; a failure offers Try Again. Whisper now loads first (small, seconds), then the
+AI, so they don't compete. A question asked meanwhile waits, and the cursor bubble says so.
+
+**Whisper.** Start timeout 60 s → 180 s and transcription 60 s → 120 s (the production log had a
+transcription time out while the AI load was swapping); it restarts itself after a crash (at most
+3 times in 10 minutes). Talk mode never listens while Bigfoot is still speaking, and speech that
+matches what Bigfoot said in the last 30 s is ignored (the log showed Bigfoot's own sentence
+"Let me try drawing it from simple shapes instead" coming back as a request).
+
+**Math.** `math.js` solves linear equations in several unknowns for one of them, systems
+(Gaussian elimination with partial pivoting), and writes the working for equations and systems.
+`mathink.splitScripts` finds raised characters (height and position against the line's median)
+and reads them separately as exponents. `cas.js` runs nerdamer-prime (MIT) on a worker thread with
+a 6 s limit per job (a stuck job replaces the worker; it never blocks Bigfoot) for derivatives,
+integrals (numerically when there is no closed form), limits, sums, vectors, factoring; with
+term-by-term working. The AI model's math prompt now only transcribes (into `diff`, `integrate`,
+`defint`, `system(...)` notation); every answer comes from the engine.
+
+**Other.** The agent stops a step the model repeats (the log showed one rectangle drawn 8 times).
+The Draw tool shares (copy with screen, PNG, SVG), and `edit_drawing` can `read` the drawing as
+SVG and `replace` it with an edited version. Area questions show the captured area in the chat.
+Voices default to female. Models switch without a restart; the old model's files and saved prompts
+are deleted after the runtime has stopped (Windows can't delete files in use).
 
 ## 10. Performance
 

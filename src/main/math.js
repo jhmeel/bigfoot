@@ -151,16 +151,42 @@ function nice(v) {
   return format(Number(v.toPrecision(10)));
 }
 
+// ---------------------------------------------------------------- showing the working
+const SUP = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+/** An expression as people write it: 2·x → 2x, x^2 → x², spaces around = + −. */
+function show(s) {
+  return String(s)
+    .replace(/\^\(?(\d+)\)?/g, (m, d) => [...d].map((c) => SUP[c]).join(''))
+    .replace(/(\d)\*(?=[a-z(])/gi, '$1').replace(/\*/g, '·').replace(/-/g, '−')
+    .replace(/\s*([=+−])\s*/g, ' $1 ').replace(/\(\s*−\s*/g, '(−').replace(/^\s*−\s*/, '−')
+    .replace(/\s+/g, ' ').trim();
+}
+
+/** Σ coef·name in order, e.g. [[2,'x²'],[-5,'x'],[6,'']] → 2x² − 5x + 6 (zero terms left out). */
+function sumText(terms) {
+  const parts = [];
+  for (const [k, name] of terms) {
+    if (Math.abs(k) < 1e-12) continue;
+    const n = nice(Math.abs(k));
+    const body = !name ? n : n === '1' ? name : n.includes('/') ? `(${n})${name}` : `${n}${name}`;
+    parts.push(parts.length ? `${k < 0 ? '−' : '+'} ${body}` : `${k < 0 ? '−' : ''}${body}`);
+  }
+  return parts.length ? parts.join(' ') : '0';
+}
+const signed = (n) => (n < 0 ? `(−${nice(-n)})` : nice(n));
+const minus = (s) => s.replace(/(^|[\s(=,])-(?=\d)/g, '$1−');
+
 /**
  * Solve an equation in one unknown: linear and quadratic exactly, anything else numerically.
- * @returns {{ expression, variable, roots: number[], text }}
+ * @returns {{ expression, variable, roots: number[], text, steps: string[] }}
  */
 function solveEquation(text) {
   const expression = normalize(text);
   const sides = expression.split('=');
   if (sides.length !== 2 || !sides[0].trim() || !sides[1].trim()) throw new MathError('Not an equation');
   const names = unknowns(expression);
-  if (names.length !== 1) throw new MathError(names.length ? 'More than one unknown' : 'No unknown');
+  if (!names.length) throw new MathError('No unknown');
+  if (names.length > 1) return solveForOne(expression, sides, names);
   const [v] = names;
   const f = (x) => {
     try { return parse(sides[0], { [v]: x }) - parse(sides[1], { [v]: x }); } catch (err) {
@@ -179,16 +205,30 @@ function solveEquation(text) {
     return Number.isFinite(got) && Math.abs(got - (a * x * x + b * x + c)) <= 1e-7 * Math.max(1, Math.abs(got));
   });
   const tiny = (n) => Math.abs(n) < 1e-12;
+  const steps = [show(expression)];
   let roots;
   if (fits && tiny(a)) {
-    if (tiny(b)) return { expression, variable: v, roots: [], text: tiny(c) ? 'any value' : 'no solution' };
+    steps.push(`Bring everything to one side: ${sumText([[b, v], [c, '']])} = 0`);
+    if (tiny(b)) {
+      steps.push(tiny(c) ? 'Both sides are always equal' : `That says ${nice(c)} = 0, which is never true`);
+      return { expression, variable: v, roots: [], text: tiny(c) ? 'any value' : 'no solution', steps: steps.map(minus) };
+    }
+    steps.push(`${sumText([[b, v]])} = ${nice(-c)}`);
+    if (Math.abs(b - 1) > 1e-12) steps.push(`Divide both sides by ${signed(b)}: ${v} = ${nice(-c)} ÷ ${signed(b)}`);
     roots = [-c / b];
   } else if (fits) {
     const disc = b * b - 4 * a * c;
-    if (disc < -1e-12) return { expression, variable: v, roots: [], text: 'no real solution' };
+    steps.push(`Standard form: ${sumText([[a, `${v}²`], [b, v], [c, '']])} = 0   (a = ${nice(a)}, b = ${nice(b)}, c = ${nice(c)})`);
+    steps.push(`Discriminant: b² − 4ac = ${signed(b)}² − 4·${signed(a)}·${signed(c)} = ${nice(disc)}`);
+    if (disc < -1e-12) {
+      steps.push('It is negative, so there is no real solution');
+      return { expression, variable: v, roots: [], text: 'no real solution', steps: steps.map(minus) };
+    }
     const r = Math.sqrt(Math.max(0, disc));
+    steps.push(`${v} = (−b ± √${nice(disc)}) ÷ 2a = (${nice(-b)} ± ${nice(r)}) ÷ ${nice(2 * a)}`);
     roots = tiny(r) ? [-b / (2 * a)] : [(-b - r) / (2 * a), (-b + r) / (2 * a)];
   } else {
+    steps.push('Not linear or quadratic: the solution is found by narrowing in on where both sides are equal');
     roots = [];
     const step = 0.05;
     let px = -200;
@@ -211,7 +251,107 @@ function solveEquation(text) {
     if (!roots.length) throw new MathError('No solution found');
   }
   roots = roots.map((r) => (Object.is(r, -0) ? 0 : r)).sort((p, q) => p - q);
-  return { expression, variable: v, roots, text: `${v} = ${roots.map(nice).join(', ')}` };
+  const answer = `${v} = ${roots.map(nice).join(', ')}`;
+  steps.push(roots.length > 1 ? roots.map((r) => `${v} = ${nice(r)}`).join('  or  ') : answer);
+  return { expression, variable: v, roots, text: answer, steps: steps.map(minus) };
 }
 
-module.exports = { evaluate, normalize, format, parse, solveEquation, unknowns, MathError };
+/**
+ * left − right as c + Σ coef·var when it's linear in every unknown, else null.
+ * Checked at several points, so x·y or x² are never mistaken for linear.
+ */
+function linearForm(sides, names) {
+  const f = (vals) => parse(sides[0], vals) - parse(sides[1], vals);
+  const zero = Object.fromEntries(names.map((n) => [n, 0]));
+  let c;
+  let coef;
+  try {
+    c = f(zero);
+    coef = names.map((n) => f({ ...zero, [n]: 1 }) - c);
+    for (const t of [1.7, -2.3, 3.1, 0.45]) {
+      const vals = Object.fromEntries(names.map((n, i) => [n, t * (i + 1.3) - i]));
+      const got = f(vals);
+      const want = c + names.reduce((s, n, i) => s + coef[i] * vals[n], 0);
+      if (!Number.isFinite(got) || Math.abs(got - want) > 1e-7 * Math.max(1, Math.abs(got))) return null;
+    }
+  } catch {
+    return null;
+  }
+  return { c, coef };
+}
+
+/** 3 − x, x/2 + 1, −2a + b: a linear expression in readable form. */
+function linearText(constant, terms) {
+  const parts = [];
+  for (const [k, name] of terms) {
+    if (Math.abs(k) < 1e-12) continue;
+    const mag = Math.abs(k);
+    const n = nice(mag);
+    const term = n === '1' ? name : n.includes('/') ? `${n.split('/')[0] === '1' ? '' : n.split('/')[0]}${name}/${n.split('/')[1]}` : `${n}${name}`;
+    parts.push([k < 0, term]);
+  }
+  if (Math.abs(constant) > 1e-12 || !parts.length) parts.unshift([constant < 0, nice(Math.abs(constant))]);
+  return parts.map(([neg, t], i) => (i === 0 ? (neg ? `−${t}` : t) : `${neg ? '−' : '+'} ${t}`)).join(' ');
+}
+
+/** One linear equation, several unknowns: solve for one of them (y if it's there). */
+function solveForOne(expression, sides, names) {
+  const form = linearForm(sides, names);
+  if (!form) throw new MathError('Not linear in its unknowns');
+  const order = [...names].sort((a, b) => (b === 'y') - (a === 'y') || b.localeCompare(a));
+  const v = order.find((n) => Math.abs(form.coef[names.indexOf(n)]) > 1e-12);
+  if (!v) throw new MathError('No unknown left after simplifying');
+  const a = form.coef[names.indexOf(v)];
+  const others = names.filter((n) => n !== v).sort();
+  const rest = others.map((n) => [-form.coef[names.indexOf(n)] / a, n]);
+  const text = `${v} = ${linearText(-form.c / a, rest)}`;
+  const steps = [
+    show(expression),
+    `Bring everything to one side: ${sumText([...names.map((n) => [form.coef[names.indexOf(n)], n]), [form.c, '']])} = 0`,
+    `Keep ${v} on the left: ${sumText([[a, v]])} = ${sumText([[-form.c, ''], ...others.map((n) => [-form.coef[names.indexOf(n)], n])])}`,
+  ];
+  if (Math.abs(a - 1) > 1e-12) steps.push(`Divide by ${signed(a)}: ${text}`);
+  else steps.push(text);
+  steps.push(`One equation with ${names.length} unknowns has many solutions; add ${names.length - 1 === 1 ? 'another equation' : `${names.length - 1} more equations`} to pin them down`);
+  return { expression, variable: v, roots: [], text, steps: steps.map(minus) };
+}
+
+/**
+ * Several linear equations together (one per line): the values that satisfy all of them.
+ * @returns {{ values: Record<string, number>, text }} or throws when there's no single answer.
+ */
+function solveSystem(texts) {
+  const eqs = texts.map((t) => normalize(t)).filter((e) => e.split('=').length === 2);
+  const names = [...new Set(eqs.flatMap(unknowns))].sort();
+  if (names.length < 2 || eqs.length < names.length) throw new MathError('Needs as many equations as unknowns');
+  const rows = eqs.map((e) => {
+    const form = linearForm(e.split('='), names);
+    if (!form) throw new MathError('Only linear equations can be solved together');
+    return [...form.coef, -form.c];
+  });
+  // Gaussian elimination with partial pivoting; each elimination is written out.
+  const m = names.length;
+  const rowText = (r) => `${sumText(names.map((n, j) => [r[j], n]))} = ${nice(r[m])}`;
+  const steps = eqs.map((e, i) => `(${i + 1})  ${show(e)}`);
+  for (let col = 0; col < m; col++) {
+    let pivot = col;
+    for (let r = col + 1; r < rows.length; r++) if (Math.abs(rows[r][col]) > Math.abs(rows[pivot][col])) pivot = r;
+    if (Math.abs(rows[pivot][col]) < 1e-10) throw new MathError('These equations don’t have a single answer');
+    [rows[col], rows[pivot]] = [rows[pivot], rows[col]];
+    for (let r = 0; r < rows.length; r++) {
+      if (r === col) continue;
+      const k = rows[r][col] / rows[col][col];
+      if (Math.abs(k) < 1e-12) continue;
+      for (let j = col; j <= m; j++) rows[r][j] -= k * rows[col][j];
+      if (steps.length < 14) steps.push(`Remove ${names[col]} from equation ${r + 1} (${k < 0 ? 'add' : 'subtract'} ${nice(Math.abs(k)) === '1' ? '' : `${nice(Math.abs(k))} × `}equation ${col + 1}): ${rowText(rows[r])}`);
+    }
+  }
+  for (let r = m; r < rows.length; r++) if (Math.abs(rows[r][m]) > 1e-7) throw new MathError('These equations contradict each other');
+  const values = Object.fromEntries(names.map((n, i) => [n, rows[i][m] / rows[i][i]]));
+  names.forEach((n, i) => { if (Math.abs(rows[i][i] - 1) > 1e-12) steps.push(`Divide by ${signed(rows[i][i])}: ${n} = ${nice(values[n])}`); });
+  const answer = names.map((n) => `${n} = ${nice(values[n])}`).join(', ');
+  steps.push(`So ${answer}. Check: ${eqs.map((e) => show(e)).join(' and ')} both hold ✓`.replace('both', eqs.length > 2 ? 'all' : 'both'));
+  return { values, text: answer, steps: steps.map(minus) };
+}
+
+module.exports = { evaluate, normalize, format, parse, solveEquation, solveSystem, unknowns, MathError };

@@ -31,6 +31,18 @@
 .turn .avatar { flex: none; width: 24px; height: 24px; margin-top: 1px; border-radius: 7px; padding: 4px; background: linear-gradient(#ffffff, #e7ebf0); }
 .msg { font-size: 14px; line-height: 1.6; user-select: text; white-space: pre-wrap; overflow-wrap: anywhere; }
 .msg.user { max-width: 80%; padding: 9px 14px; border-radius: 16px; background: var(--surface-3); border: 1px solid var(--hairline); }
+.ai-loading { margin: 10px 16px 0; padding: 10px 12px; border-radius: 12px; background: var(--surface-2, rgba(255, 255, 255, 0.04)); border: 1px solid var(--hairline); }
+.ai-loading[hidden] { display: none; }
+.ail-head { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; }
+.ail-head span:nth-child(2) { flex: 1; min-width: 0; }
+.ail-dot { width: 10px; height: 10px; border-radius: 50%; box-sizing: border-box; border: 2px solid rgba(51, 128, 255, 0.25); border-top-color: #3380ff; animation: spin 0.8s linear infinite; }
+.ai-loading[data-state='failed'] .ail-dot { animation: none; background: var(--danger, #ff453a); border-color: var(--danger, #ff453a); }
+.ail-pct { color: var(--text-2, #8f969c); font-variant-numeric: tabular-nums; }
+.ail-track { height: 3px; margin: 8px 0 6px; border-radius: 2px; background: var(--hairline); overflow: hidden; }
+.ai-loading[data-state='failed'] .ail-track { display: none; }
+.ail-track i { display: block; height: 100%; width: 0; background: #3380ff; border-radius: 2px; transition: width 900ms cubic-bezier(0.22, 1, 0.36, 1); }
+.ail-note { font-size: 12px; color: var(--text-2, #8f969c); }
+.msg-image { display: block; max-width: 100%; max-height: 220px; margin: -3px -8px 8px; border-radius: 10px; border: 1px solid var(--hairline); object-fit: contain; background: var(--surface-2, #111); }
 .msg.assistant { flex: 1; min-width: 0; padding-top: 2px; color: var(--text-1); }
 .msg.typing { display: flex; gap: 4px; align-items: center; height: 26px; }
 .msg.typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); animation: typing 1.2s ease-in-out infinite; }

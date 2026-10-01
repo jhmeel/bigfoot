@@ -131,6 +131,7 @@ class Agent {
         const r = [region.x0, region.y0, region.x1, region.y1].map(Math.round);
         let full = await this.target.screenshot();
         const crop = await this.target.zoom(r);
+        if (this.hooks.regionImage) this.hooks.regionImage(crop); // shown with the question in the chat
         let traced = false;
         if (region.points && this.hooks.markImage) {
           try {
@@ -175,6 +176,8 @@ class Agent {
   async loop(provider, signal) {
     const maxTurns = this.settings.get('maxTurns');
     let nudges = 0;
+    let lastKey = '';
+    let repeats = 0;
     for (let turn = 0; turn < maxTurns; turn++) {
       this.hooks.state('processing');
       const step = await provider.step(signal, (msg) => this.hooks.terminal('info', msg));
@@ -203,6 +206,20 @@ class Agent {
         }
         const { text, point } = extractPoint(step.text);
         return { status: 'done', text, point: point && this.localPoint(point) };
+      }
+
+      // Small models can get stuck making the very same call over and over.
+      const key = JSON.stringify(step.calls.map((c) => [c.name, c.input]));
+      repeats = key === lastKey ? repeats + 1 : 0;
+      lastKey = key;
+      if (repeats >= 2) {
+        provider.addToolResults(step.calls.map((call) => ({ call, content: 'Not executed: repeated.', isError: true })));
+        return { status: 'done', text: 'I kept repeating the same step, so I stopped. Try asking in different words.', point: null };
+      }
+      if (repeats === 1) {
+        this.hooks.terminal('info', 'The model repeated its last step; asking it to move on.');
+        provider.addToolResults(step.calls.map((call) => ({ call, content: 'Not executed: you already did exactly this and it worked. Do the next, different step, or finish with one short sentence.', isError: true })));
+        continue;
       }
 
       this.hooks.state('acting');

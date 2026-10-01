@@ -83,6 +83,7 @@ class AudioService extends EventEmitter {
     const provider = this.settings.get('ttsProvider');
     const rate = this.settings.get('speechRate');
     this.speaking = true;
+    this.said = [...(this.said || []).slice(-20), { text, at: Date.now() }];
     try {
       if (provider !== 'system') {
         try {
@@ -151,12 +152,37 @@ class AudioService extends EventEmitter {
   }
 
   enqueue(s, sentence) {
+    s.pending = (s.pending || 0) + 1;
     s.queue = s.queue.then(async () => {
-      if (this.stream !== s) return 'none';
-      const used = await this.speak(sentence.trim());
-      if (used !== 'none') s.used = used;
-      return used;
+      try {
+        if (this.stream !== s) return 'none';
+        const used = await this.speak(sentence.trim());
+        if (used !== 'none') s.used = used;
+        return used;
+      } finally {
+        s.pending--;
+      }
     });
+  }
+
+  /** Still talking, or has sentences waiting to be said. Talk mode must not listen meanwhile. */
+  isBusy() {
+    return this.speaking || Boolean(this.stream && this.stream.pending > 0);
+  }
+
+  /**
+   * Did the microphone just pick up Bigfoot's own voice? True when most of the words heard were
+   * in something it said in the last half minute.
+   */
+  heardItself(text) {
+    const words = (s) => String(s).toLowerCase().match(/[\p{L}\p{N}']+/gu) || [];
+    const heard = words(text);
+    if (!heard.length) return false;
+    const now = Date.now();
+    this.said = (this.said || []).filter((x) => now - x.at < 30000);
+    const recent = new Set(this.said.flatMap((x) => words(x.text)));
+    const known = heard.filter((w) => recent.has(w)).length;
+    return heard.length >= 2 ? known / heard.length >= 0.75 : false;
   }
 }
 
