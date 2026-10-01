@@ -90,15 +90,9 @@
   });
   function renderLocalFoot() {
     if (!local) return;
-    const st = local.status;
-    $('local-remove').hidden = !st.installed || !['ready', 'none'].includes(st.status);
     renderActive();
   }
   UI.switchControl($('keep-loaded'), s.keepAiLoaded, (v) => update({ keepAiLoaded: v }));
-  $('local-remove').addEventListener('click', async () => {
-    const ok = window.confirm('Remove the local AI model from this PC? Bigfoot won’t work offline until you download a model again.');
-    if (ok) await api.invoke('local:remove');
-  });
   const llmKey = UI.keyField({
     input: $('llm-key'), status: $('llm-key-status'), reveal: $('llm-reveal'), remove: $('llm-remove'),
     key: () => current().keyName, has: s.has[current().keyName], placeholder: () => current().placeholder,

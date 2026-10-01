@@ -77,13 +77,15 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
   handle('local:pause', () => local.pause());
   handle('local:resume', () => local.resume());
   handle('local:cancel', () => local.cancel());
-  handle('local:remove', () => local.remove());
 
   // ---- tool tray and math
   handle('toolbar:pick', (tool) => { controller.pickTool(tool); return true; });
   handle('math:read', (png) => controller.readMath(png));
   handle('math:ink', (strokes) => controller.readMathInk(strokes));
+  handle('math:system', (expressions) => controller.solveMathSystem(expressions));
   handle('ink:stop', () => { controller.stopInk(); return true; });
+  handle('ink:share', (kind, event) => controller.shareDrawing(windows.displayIdOf(event.sender), ['copy', 'png', 'svg'].includes(kind) ? kind : 'copy'));
+  handle('ink:reveal', (file) => { controller.revealFile(file); return true; });
   ipcMain.on('ink:reply', (_e, msg) => controller.onInkReply(msg || {}));
   ipcMain.on('ink:state', (event, state) => controller.onInkState(windows.displayIdOf(event.sender), state || {}));
   ipcMain.on('ink:passthrough', (event, on) => controller.setInkPassthrough(windows.displayIdOf(event.sender), Boolean(on)));
@@ -93,6 +95,9 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
     if (provider === 'system') {
       try {
         const voices = await audio.call('list-voices', {}, 10000);
+        // Female English voices first, so the default pick is one of them.
+        const rank = (v) => (voice.isFemaleVoice(v.id) ? 0 : 2) + (/^en/i.test(v.lang) ? 0 : 1);
+        voices.sort((a, b) => rank(a) - rank(b) || Number(/natural|online/i.test(b.id)) - Number(/natural|online/i.test(a.id)));
         return { ok: true, voices: voices.map((v) => ({ id: v.id, name: prettyVoice(v) })) };
       } catch (err) {
         return { ok: false, message: err.message, voices: [] };
@@ -176,10 +181,7 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
 
   // ---- fire-and-forget messages from renderers
   ipcMain.on('overlay:region', (event, rect) => controller.onRegionSelected(windows.displayIdOf(event.sender), rect));
-  ipcMain.on('overlay:region-ask', (_e, text) => {
-    if (typeof text === 'string' && text.trim()) controller.runTask(text.slice(0, 4000), 'typed');
-    else controller.clearRegion();
-  });
+  ipcMain.on('overlay:region-ask', (_e, text) => controller.askAboutRegion(typeof text === 'string' ? text.trim().slice(0, 4000) : ''));
   ipcMain.on('overlay:ready', (event) => {
     event.sender.send('state', controller.state);
     event.sender.send('settings', settings.publicView());

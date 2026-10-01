@@ -10,8 +10,8 @@ const INVOKE = new Set([
   'app:open-settings', 'app:open-onboarding', 'app:quit', 'app:open-logs', 'app:open-plugins', 'app:open-link', 'app:info',
   'onboarding:finish', 'window:close', 'window:minimize', 'panel:resize', 'approval:answer',
   'terminal:open', 'terminal:get', 'terminal:clear', 'terminal:reveal',
-  'local:hardware', 'local:status', 'local:start', 'local:pause', 'local:resume', 'local:cancel', 'local:remove',
-  'toolbar:pick', 'math:read', 'math:ink', 'ink:stop',
+  'local:hardware', 'local:status', 'local:start', 'local:pause', 'local:resume', 'local:cancel',
+  'toolbar:pick', 'math:read', 'math:ink', 'math:system', 'ink:stop', 'ink:share', 'ink:reveal', 'loader:status', 'loader:retry',
   'plugins:list', 'plugins:pick', 'plugins:install', 'plugins:remove',
 ]);
 const SEND = new Set([
@@ -19,9 +19,9 @@ const SEND = new Set([
   'engine:ready', 'engine:reply', 'engine:level', 'engine:vad', 'ink:passthrough', 'ink:reply', 'ink:state',
 ]);
 const RECEIVE = new Set([
-  'cursor', 'state', 'bubble', 'bubble-live', 'fly', 'banner', 'welcome', 'settings', 'log', 'log-live', 'usage', 'level',
+  'cursor', 'state', 'bubble', 'bubble-live', 'fly', 'banner', 'welcome', 'settings', 'log', 'log-live', 'log-image', 'usage', 'level',
   'engine:cmd', 'approval:show', 'buddy:visible', 'annotate', 'select', 'region', 'terminal:line',
-  'local:progress', 'local:runtime', 'toolbar:show', 'ink', 'voice-mode',
+  'local:progress', 'local:runtime', 'toolbar:show', 'ink', 'voice-mode', 'loader',
 ]);
 
 contextBridge.exposeInMainWorld('buddy', {

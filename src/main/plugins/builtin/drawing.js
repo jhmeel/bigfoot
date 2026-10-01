@@ -2,7 +2,10 @@
 
 const { PICTURES, pictureName, pictureStrokes } = require('../lib/pictures');
 const { searchIcons, iconShapes, iconCount } = require('../lib/icons');
-const { parseSvg, strokesFor } = require('../lib/vector');
+const { parseSvg, strokesFor, strokesToSvg } = require('../lib/vector');
+
+// Where the drawing was when the model last read it, so "replace" puts the edited SVG back there.
+const lastRead = new Map();
 
 const SHAPES = ['picture', 'svg', 'path', 'line', 'arrow', 'rect', 'ellipse', 'text'];
 const PENS = ['pen', 'brush', 'highlighter'];
@@ -79,11 +82,11 @@ async function addSvg(input, ctx, toLocal) {
 module.exports = {
   name: 'edit_drawing',
   description: `Draw on the user's screen, or change the drawing they made with the Draw tool (it appears in your screenshots). Your changes become part of their drawing, and they can undo them. Coordinates are pixels in the latest screenshot.
-To draw a thing, use shape "picture" with its subject: a ready line drawing from a library of ${Object.keys(PICTURES).length} pictures and ${iconCount() || 'thousands of'} icons (animals, food, transport, buildings, tools, weather, sports, devices, symbols…). For anything else, or a detailed or colored illustration, use shape "svg" with SVG markup you write yourself. To neaten the user's rough shapes, use action "tidy". Never trace a picture point by point with "path".`,
+To draw a thing, use shape "picture" with its subject: a ready line drawing from a library of ${Object.keys(PICTURES).length} pictures and ${iconCount() || 'thousands of'} icons (animals, food, transport, buildings, tools, weather, sports, devices, symbols…). For anything else, or a detailed or colored illustration, use shape "svg" with SVG markup you write yourself. To change an existing drawing (recolor, fix, restyle, add to it), use action "read" to get it as SVG, edit that SVG, and send it back with action "replace". To neaten the user's rough shapes, use action "tidy". Never trace a picture point by point with "path".`,
   input_schema: {
     type: 'object',
     properties: {
-      action: { type: 'string', enum: ['add', 'erase', 'clear', 'tidy'], description: 'add: draw something. erase: remove strokes that touch region. clear: remove the whole drawing. tidy: turn the user\'s rough lines, circles, ellipses, rectangles, and triangles into perfect ones (in region, or everywhere).' },
+      action: { type: 'string', enum: ['add', 'erase', 'clear', 'tidy', 'read', 'replace'], description: 'add: draw something. erase: remove strokes that touch region. clear: remove the whole drawing. tidy: turn the user\'s rough lines, circles, ellipses, rectangles, and triangles into perfect ones (in region, or everywhere). read: get the whole drawing as SVG code. replace: swap the drawing for your edited SVG (from read), in the same place.' },
       shape: { type: 'string', enum: SHAPES, description: 'For add. picture: a ready drawing of subject. svg: your own SVG markup in svg. For both, points = [top-left, bottom-right] of where it goes (or one point as its center; default: the middle of the screen). path: freehand through points (2-400). line/arrow: points = [from, to]. rect/ellipse: points = [top-left, bottom-right]. text: points = [position], with text.' },
       points: { type: 'array', items: { type: 'array', items: { type: 'number' } }, description: 'List of [x, y] screenshot pixel coordinates.' },
       region: { type: 'array', items: { type: 'number' }, description: 'For erase and tidy: [x0, y0, x1, y1].' },
@@ -122,7 +125,26 @@ To draw a thing, use shape "picture" with its subject: a ready line drawing from
       const n = await ctx.ink({ op: 'tidy', rect: rectFrom(input.region) });
       return n ? `Tidied ${n} shape${n === 1 ? '' : 's'}.` : 'Found no rough lines, circles, or boxes to tidy.';
     }
-    if (input.action !== 'add') throw new Error('action must be add, erase, clear, or tidy');
+    const displayId = ctx.screen.display && ctx.screen.display.id;
+    if (input.action === 'read') {
+      const out = strokesToSvg(await ctx.ink({ op: 'strokes' }));
+      if (!out) return 'Nothing is drawn yet.';
+      lastRead.set(displayId, out.box);
+      return `The drawing as SVG (its own coordinates, 0,0 at its top-left):\n${out.svg}\nTo change it, edit this SVG and call edit_drawing with action "replace" and the new svg; it goes back in the same place. Keep the viewBox to keep the size.`;
+    }
+    if (input.action === 'replace') {
+      if (!input.svg) throw new Error('replace needs svg (read the drawing first with action "read")');
+      const svg = parseSvg(input.svg);
+      let box = Array.isArray(input.points) && input.points.length >= 2 ? boxFor(input, ctx, toLocal) : lastRead.get(displayId);
+      if (!box) {
+        const current = strokesToSvg(await ctx.ink({ op: 'strokes' }));
+        box = current ? current.box : boxFor(input, ctx, toLocal);
+      }
+      const strokes = strokesFor(svg, box, { color: (c) => inkColor(c, COLORS.blue), fallbackColor: inkColor(input.color, COLORS.blue) || COLORS.blue, size: WIDTHS[input.width] ?? 1 });
+      await ctx.ink({ op: 'replace', strokes });
+      return `Replaced the drawing (${strokes.length} strokes). The user can undo this.`;
+    }
+    if (input.action !== 'add') throw new Error('action must be add, erase, clear, tidy, read, or replace');
     if (input.shape === 'svg' || (input.svg && !input.shape)) return addSvg(input, ctx, toLocal);
     if (input.shape === 'picture' || (input.subject && !input.shape)) return addPicture(input, ctx, toLocal);
     const shape = SHAPES.includes(input.shape) ? input.shape : 'path';

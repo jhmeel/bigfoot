@@ -2,8 +2,14 @@
 // Speech-to-text and cloud text-to-speech. The built-in "System" voices are played in the
 // renderer with the Web Speech API and need no key.
 
-const OPENAI_VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer', 'verse']
+// Female voices first: Bigfoot speaks with a female voice unless the user picks another.
+const OPENAI_VOICES = ['coral', 'nova', 'shimmer', 'sage', 'alloy', 'ash', 'ballad', 'echo', 'fable', 'onyx', 'verse']
   .map((id) => ({ id, name: id[0].toUpperCase() + id.slice(1) }));
+
+const FEMALE = /\b(zira|hazel|susan|aria|jenny|sonia|libby|michelle|ava|emma|clara|natasha|catherine|linda|heera|eva|elsa|hortense|julie|helena|laura|sabina|paulina|hedda|katja|irina|sarah|salli|joanna|kendra|kimberly|ivy|amy|nicole|olivia|coral|nova|shimmer|sage|female)\b/i;
+const MALE = /\b(david|mark|george|guy|ryan|christopher|eric|james|brian|andrew|william|liam|thomas|richard|sean|ravi|onyx|echo|ash|male)\b/i;
+const isFemaleVoice = (name) => FEMALE.test(String(name || ''));
+const isMaleVoice = (name) => MALE.test(String(name || '')) && !isFemaleVoice(name);
 
 class VoiceError extends Error {
   constructor(message, title = 'Voice problem') {
@@ -90,10 +96,11 @@ async function listVoices(provider, key) {
     if (!key) return [];
     const res = await request('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } }, 'ElevenLabs');
     const body = await res.json();
-    return (body.voices || []).map((v) => ({ id: v.voice_id, name: v.name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    const female = (v) => (v.labels && v.labels.gender === 'female') || isFemaleVoice(v.name);
+    return (body.voices || []).sort((a, b) => Number(female(b)) - Number(female(a)) || a.name.localeCompare(b.name))
+      .map((v) => ({ id: v.voice_id, name: v.name }));
   }
   return []; // system voices are listed in the renderer
 }
 
-module.exports = { transcribe, synthesize, listVoices, VoiceError, OPENAI_VOICES };
+module.exports = { transcribe, synthesize, listVoices, VoiceError, OPENAI_VOICES, isFemaleVoice, isMaleVoice };

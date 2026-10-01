@@ -279,7 +279,8 @@ test('handwriting is read live: answered after "=", checked when the user wrote 
   assert.equal(interpretInk([['2b+1=7']]).answer, 'b = 3'); // a b is a variable, not a 6
   assert.equal(interpretInk([['x^2-5x+6=0']]).answer, 'x = 2, 3');
   assert.equal(interpretInk([['3x+2=2x+5']]).answer, 'x = 3'); // "=" inside an equation isn't an answer
-  assert.equal(interpretInk([['x+y=2']]).status, 'solve'); // two unknowns: the model
+  assert.equal(interpretInk([['x+y=2']]).answer, 'y = 2 − x'); // two unknowns: solved for one
+  assert.equal(interpretInk([['xy=6']]).status, 'solve'); // not linear: the model reads it
   assert.equal(interpretInk([['hello']]).status, 'unknown');
 });
 
@@ -313,12 +314,45 @@ test('handwritten arithmetic is evaluated exactly', () => {
   assert.throws(() => evaluate('process.exit()'));
 });
 
-test('the model reads, the calculator answers', () => {
-  assert.deepEqual(parseReply('```json\n{"expression": "12+7", "answer": "20"}\n```'), { expression: '12+7', answer: '20' });
-  assert.deepEqual(parseReply('no idea'), { expression: '', answer: '' });
-  assert.deepEqual(resolveAnswer({ expression: '12+7', answer: '20' }), { expression: '12+7', answer: '19', exact: true });
-  assert.deepEqual(resolveAnswer({ expression: '3x + 2 = 8', answer: 'x = 2' }), { expression: '3x + 2 = 8', answer: 'x = 2', exact: false });
-  assert.equal(resolveAnswer({ expression: '', answer: '5' }).answer, '');
+test('the model reads, the calculator answers (never the model’s own arithmetic)', async () => {
+  assert.deepEqual(parseReply('```json\n{"expression": "12+7", "answer": "20"}\n```'), { expression: '12+7', compute: '' });
+  assert.deepEqual(parseReply('no idea'), { expression: '', compute: '' });
+  assert.equal((await resolveAnswer({ expression: '12+7' })).answer, '19');
+  const eq = await resolveAnswer({ expression: '3x + 2 = 8' });
+  assert.equal(eq.answer, 'x = 2');
+  assert.ok(eq.steps.length >= 3); // the working is shown
+  const sys = await resolveAnswer({ expression: 'x+y=5 and x-y=1', compute: 'system(x+y=5; x-y=1)' });
+  assert.equal(sys.answer, 'x = 3, y = 2');
+  assert.equal((await resolveAnswer({ expression: '', compute: '' })).answer, '');
+});
+
+test('calculus and vectors are computed exactly, with their working', async () => {
+  const cas = require('../src/main/cas');
+  assert.equal((await cas.compute('diff(x^3+2*x, x)')).answer, '2+3x²');
+  assert.equal((await cas.compute('defint(x^2, 0, 3, x)')).answer, '9');
+  assert.equal((await cas.compute('defint(sin(x), 0, pi, x)')).answer, '2');
+  assert.equal((await cas.compute('cross([1,2,3],[4,5,6])')).answer, '[-3,6,-3]');
+  assert.equal((await cas.compute('dot([1,2,3],[4,5,6])')).answer, '32');
+  assert.equal((await cas.compute('limit(sin(x)/x, x, 0)')).answer, '1');
+  assert.equal(cas.fromHandwriting('∫x^2dx'), 'integrate(x^2,x)');
+  assert.equal(cas.fromHandwriting('d/dx x^3'), 'diff(x^3,x)');
+  assert.equal(cas.fromHandwriting('2x+1'), null);
+  const steps = await cas.working('defint(x^2,0,3,x)');
+  assert.deepEqual(steps.slice(-1), ['F(3) − F(0) = 9']);
+  await assert.rejects(cas.compute('process.exit()'), /isn’t math/);
+});
+
+test('equations: several unknowns, systems, powers, and the working', () => {
+  const { solveEquation, solveSystem } = require('../src/main/math');
+  const { splitScripts } = require('../src/main/mathink');
+  assert.equal(solveEquation('2x+2y=6').text, 'y = 3 − x');
+  assert.equal(solveEquation('x^2-5x+6=0').text, 'x = 2, 3');
+  assert.equal(solveSystem(['x+y=5', 'x-y=1']).text, 'x = 3, y = 2');
+  assert.throws(() => solveSystem(['x+y=2', '2x+2y=4']), /single answer/);
+  assert.ok(solveEquation('x^2-5x+6=0').steps.some((s) => s.startsWith('Discriminant')));
+  const line = (x0, y0, x1, y1) => Array.from({ length: 8 }, (_, i) => ({ x: x0 + ((x1 - x0) * i) / 7, y: y0 + ((y1 - y0) * i) / 7 }));
+  const runs = splitScripts([line(100, 100, 130, 140), line(130, 100, 100, 140), line(140, 82, 152, 98), line(170, 120, 190, 120)]);
+  assert.deepEqual(runs.map((r) => r.sup), [false, true, false]); // x, a raised 2, then the rest
 });
 
 test('2B is no longer offered, and an installed 2B is replaced by the recommended model', async () => {

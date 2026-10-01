@@ -446,6 +446,36 @@
   $('ink-redo').addEventListener('click', redo);
   $('ink-clear').addEventListener('click', clearInk);
   $('ink-tidy').addEventListener('click', () => { prefs.tidy = !prefs.tidy; changed(); });
+
+  // ---------------------------------------------------------------- share
+  const shareMenu = $('ink-share-menu');
+  const shareNote = $('ink-share-note');
+  function toggleShare(open = shareMenu.hidden) {
+    shareMenu.hidden = !open;
+    $('ink-share').setAttribute('aria-expanded', String(open));
+    if (open) shareNote.textContent = '';
+  }
+  async function share(kind) {
+    shareNote.textContent = kind === 'copy' ? 'Copying…' : 'Saving…';
+    shareMenu.hidden = false;
+    let res;
+    try { res = await api.invoke('ink:share', kind); } catch (err) { res = { ok: false, message: err.message }; }
+    shareNote.textContent = res.message || (res.ok ? 'Done' : 'Couldn’t share it');
+    shareNote.dataset.state = res.ok ? 'ok' : 'error';
+    if (res.file) {
+      const open = document.createElement('button');
+      open.textContent = 'Show';
+      open.addEventListener('click', () => api.invoke('ink:reveal', res.file));
+      shareNote.append(' ', open);
+    }
+    setTimeout(() => { if (!shareMenu.matches(':hover')) toggleShare(false); }, 2600);
+  }
+  $('ink-share').addEventListener('click', (e) => { e.stopPropagation(); toggleShare(); });
+  shareMenu.querySelectorAll('[data-share]').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); share(b.dataset.share); }));
+  window.addEventListener('pointerdown', (e) => { if (!shareMenu.hidden && !e.target.closest('#ink-share-menu, #ink-share')) toggleShare(false); }, true);
+  window.addEventListener('keydown', (e) => {
+    if (active && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && !e.target.closest('input, textarea')) { e.preventDefault(); share('copy'); }
+  });
   $('ink-close').addEventListener('click', () => api.invoke('ink:stop'));
 
   function setTool(t) {
@@ -545,6 +575,12 @@
       case 'add': {
         const list = (Array.isArray(msg.strokes) ? msg.strokes : [msg.stroke]).filter((s) => s && TOOLS[s.tool] && Array.isArray(s.points) && s.points.length);
         return aiEdit(() => { for (const s of list) strokes.push({ ...s, pressure: false }); return list.length; });
+      }
+      case 'strokes': // the drawing as data, for SVG export (the AI's "read", Share › SVG)
+        return strokes.map(({ tool, color, size, points, text, fill, px, sharp, noStroke }) => ({ tool, color, size, points: points.map(({ x, y }) => ({ x, y })), text, fill, px, sharp, noStroke }));
+      case 'replace': {
+        const list = (Array.isArray(msg.strokes) ? msg.strokes : []).filter((s) => s && TOOLS[s.tool] && Array.isArray(s.points) && s.points.length);
+        return aiEdit(() => { strokes = list.map((s) => ({ ...s, pressure: false })); return list.length; });
       }
       case 'tidy':
         return aiEdit(() => {

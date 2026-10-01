@@ -87,7 +87,12 @@ function parseSvg(markup) {
     if (!d) continue;
     shapes.push({ d, stroke: a.stroke, fill: a.fill, width: a['stroke-width'] != null ? num(a['stroke-width'], null) : null });
   }
-  if (!shapes.length) throw new Error('The SVG has no shapes. Use path, line, polyline, polygon, circle, ellipse, or rect elements.');
+  for (const m of src.matchAll(/<text\b([^>]*)>([\s\S]*?)<\/text>/gi)) {
+    const a = { ...top, ...attrs(m[1]) };
+    const text = m[2].replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&').trim();
+    if (text) shapes.push({ text: text.slice(0, 200), x: num(a.x), y: num(a.y), fill: a.fill, stroke: 'none', fontSize: num(a['font-size'], 20) });
+  }
+  if (!shapes.length) throw new Error('The SVG has no shapes. Use path, line, polyline, polygon, circle, ellipse, rect, or text elements.');
   return { viewBox, shapes };
 }
 
@@ -130,7 +135,7 @@ function strokesFor({ shapes, viewBox }, box, { color, fallbackColor, size, line
   const h = box.y1 - box.y0;
   let vb = viewBox;
   if (!vb) {
-    const b = boundsOf(shapes.flatMap((s) => samplePath(s.d, 1).map((l) => l.pts)));
+    const b = boundsOf(shapes.flatMap((s) => (s.text ? [[{ x: s.x, y: s.y }]] : samplePath(s.d, 1).map((l) => l.pts))));
     const pad = Math.max(b.x1 - b.x0, b.y1 - b.y0) * 0.02;
     vb = [b.x0 - pad, b.y0 - pad, b.x1 - b.x0 + pad * 2 || 1, b.y1 - b.y0 + pad * 2 || 1];
   }
@@ -140,6 +145,11 @@ function strokesFor({ shapes, viewBox }, box, { color, fallbackColor, size, line
   const out = [];
   let total = 0;
   for (const s of shapes) {
+    if (s.text) {
+      const size = Math.max(0, Math.min(3, Math.round((s.fontSize * scale - 14) / 6)));
+      out.push({ tool: 'text', text: s.text, color: (s.fill && color(s.fill)) || fallbackColor, size, points: [{ x: ox + s.x * scale, y: oy + s.y * scale }] });
+      continue;
+    }
     const fill = s.fill === undefined || s.fill === '' ? null : color(s.fill);
     // As in SVG, a filled shape has no outline unless it asks for one; a bare shape is outlined.
     const stroke = s.stroke === undefined ? (fill ? null : fallbackColor) : color(s.stroke);
@@ -160,4 +170,69 @@ function strokesFor({ shapes, viewBox }, box, { color, fallbackColor, size, line
   return out;
 }
 
-module.exports = { parseSvg, samplePath, strokesFor, toPathData };
+// ---------------------------------------------------------------- the other way: ink → SVG
+const INK_SIZES = [2, 4, 8, 14];
+const escapeXml = (s) => String(s).replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]));
+
+function inkWidth(s) {
+  if (s.px) return s.px;
+  const w = INK_SIZES[s.size] || INK_SIZES[1];
+  return s.tool === 'highlighter' ? w * 3.2 + 6 : s.tool === 'brush' ? w * 2.4 + 4 : w;
+}
+
+/** Fewer points for long strokes, so the SVG stays readable (for people and for the model). */
+function thinPoints(pts, max) {
+  if (pts.length <= max) return pts;
+  const step = (pts.length - 1) / (max - 1);
+  return Array.from({ length: max }, (_, i) => pts[Math.round(i * step)]);
+}
+
+/**
+ * The drawing as standalone SVG in its own coordinates (0,0 at the top-left of the drawing).
+ * @param {object[]} strokes ink strokes in screen pixels
+ * @returns {{ svg: string, box: {x0,y0,x1,y1} } | null}
+ */
+function strokesToSvg(strokes, { maxPoints = 60, pad = 12 } = {}) {
+  const list = (strokes || []).filter((s) => s && Array.isArray(s.points) && s.points.length);
+  if (!list.length) return null;
+  let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+  for (const s of list) {
+    const w = inkWidth(s) / 2 + (s.tool === 'text' ? 200 : 0);
+    for (const p of s.points) { x0 = Math.min(x0, p.x - w); y0 = Math.min(y0, p.y - w); x1 = Math.max(x1, p.x + w); y1 = Math.max(y1, p.y + w); }
+  }
+  x0 -= pad; y0 -= pad; x1 += pad; y1 += pad;
+  const r = (n) => Math.round(n * 10) / 10;
+  const X = (p) => r(p.x - x0);
+  const Y = (p) => r(p.y - y0);
+  const body = [];
+  for (const s of list) {
+    const paint = `stroke="${s.noStroke ? 'none' : s.color}" stroke-width="${r(inkWidth(s))}" stroke-linecap="round" stroke-linejoin="round"`;
+    const [a, b] = [s.points[0], s.points[s.points.length - 1]];
+    if (s.tool === 'text') {
+      body.push(`<text x="${X(a)}" y="${Y(a)}" fill="${s.color}" font-size="${14 + (s.size || 0) * 6}" font-weight="600" dominant-baseline="middle">${escapeXml(s.text || '')}</text>`);
+    } else if (s.tool === 'line' || s.tool === 'arrow') {
+      body.push(`<line x1="${X(a)}" y1="${Y(a)}" x2="${X(b)}" y2="${Y(b)}" ${paint}/>`);
+      if (s.tool === 'arrow') {
+        const ang = Math.atan2(b.y - a.y, b.x - a.x);
+        const len = Math.max(12, inkWidth(s) * 3.6);
+        const tip = (d) => `${r(X(b) - len * Math.cos(ang + d))},${r(Y(b) - len * Math.sin(ang + d))}`;
+        body.push(`<polygon points="${X(b)},${Y(b)} ${tip(-0.45)} ${tip(0.45)}" fill="${s.color}"/>`);
+      }
+    } else if (s.tool === 'rect') {
+      body.push(`<rect x="${r(Math.min(X(a), X(b)))}" y="${r(Math.min(Y(a), Y(b)))}" width="${r(Math.abs(b.x - a.x))}" height="${r(Math.abs(b.y - a.y))}" fill="none" ${paint}/>`);
+    } else if (s.tool === 'ellipse') {
+      body.push(`<ellipse cx="${r((X(a) + X(b)) / 2)}" cy="${r((Y(a) + Y(b)) / 2)}" rx="${r(Math.abs(b.x - a.x) / 2)}" ry="${r(Math.abs(b.y - a.y) / 2)}" fill="none" ${paint}/>`);
+    } else {
+      const pts = thinPoints(s.points, maxPoints);
+      const d = `M${pts.map((p) => `${X(p)} ${Y(p)}`).join('L')}${s.fill ? 'Z' : ''}`;
+      const extra = s.tool === 'highlighter' ? ' opacity="0.34"' : '';
+      body.push(`<path d="${d}" fill="${s.fill || 'none'}" ${paint}${extra}/>`);
+    }
+  }
+  const w = r(x1 - x0);
+  const h = r(y1 - y0);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">\n${body.join('\n')}\n</svg>`;
+  return { svg, box: { x0, y0, x1, y1 } };
+}
+
+module.exports = { parseSvg, samplePath, strokesFor, toPathData, strokesToSvg };

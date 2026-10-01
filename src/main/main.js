@@ -108,6 +108,7 @@ async function start() {
       ink: (op) => controller.editInk(op),
       stream: (text) => controller.streamReply(text),
       discard: () => controller.discardStream(),
+      regionImage: (png) => controller.showRegionInChat(png),
       markImage: async (png, points) => Buffer.from(await audio.call('mark-image', { png, points }, 15000)),
     },
   });
@@ -135,6 +136,24 @@ async function start() {
     windows.send(windows.main, 'local:runtime', s);
     if (s === 'ready') controller.warmLocal();
   });
+
+  // The startup loader: the AI and speech recognition loading, shown until both are ready.
+  const loaderStatus = () => ({
+    ai: settings.get('provider') === 'local' ? runtime.status() : { state: 'ready', percent: 100, label: 'Ready' },
+    voice: { state: speech.available ? speech.state : 'ready' },
+    primaryDisplayId: screen.getPrimaryDisplay().id,
+  });
+  const sendLoader = () => {
+    const status = loaderStatus();
+    windows.broadcast('loader', status);
+    windows.send(windows.main, 'loader', status);
+    if (windows.tray) windows.tray.setToolTip(status.ai.state === 'loading' ? `Bigfoot · Loading the AI (${status.ai.percent}%)` : 'Bigfoot');
+  };
+  runtime.on('progress', sendLoader);
+  runtime.on('state', sendLoader);
+  speech.on('state', sendLoader);
+  ipcMain.handle('loader:status', () => loaderStatus());
+  ipcMain.handle('loader:retry', () => { runtime.ensure().catch(() => {}); speech.preload(); return true; });
 
   activity.onEntry((entry) => windows.send(windows.terminal, 'terminal:line', entry));
   audio.on('level', (level) => {
@@ -185,7 +204,14 @@ async function start() {
   const upgrading = await local.replaceRetired(async () => catalog.recommend(await hardware.detect(app.getPath('userData'))))
     .catch((err) => { logger.error('Model upgrade failed to start', err.message); return null; });
   if (upgrading) logger.info(`Replacing the retired local model with ${upgrading}`);
-  setTimeout(() => { runtime.preload(); if (settings.get('keepAiLoaded') !== false) speech.preload(); }, 3000); // after the windows are up
+  // After the windows are up: speech first (small, ready in seconds), then the AI, so they don't
+  // compete for memory and disk on a smaller PC.
+  setTimeout(() => {
+    speech.preload();
+    const loadAi = () => { if (settings.get('provider') === 'local') runtime.preload(); };
+    if (speech.state === 'loading') speech.once('state', () => setTimeout(loadAi, 500));
+    else loadAi();
+  }, 2500);
 
   try {
     await input.start();

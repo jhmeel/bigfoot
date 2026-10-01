@@ -102,7 +102,9 @@
       grp.el.className = 'math-answer';
       grp.reading = document.createElement('div');
       grp.reading.className = 'math-reading';
-      answers.append(grp.el, grp.reading);
+      grp.working = document.createElement('ol');
+      grp.working.className = 'math-working';
+      answers.append(grp.el, grp.reading, grp.working);
     }
     const b = grp.box;
     const h = Math.max(28, Math.min(64, (b.y1 - b.y0) * 0.8));
@@ -111,6 +113,21 @@
     grp.el.style.fontSize = `${h}px`;
     grp.reading.style.left = `${b.x0}px`;
     grp.reading.style.top = `${b.y1 + 10}px`;
+    grp.working.style.left = `${b.x0}px`;
+    grp.working.style.top = `${b.y1 + 52}px`;
+  }
+
+  /** The working for heavy maths (equations, systems, calculus, vectors), step by step under it. */
+  function showWorking(grp, steps) {
+    place(grp);
+    grp.working.textContent = '';
+    const list = Array.isArray(steps) ? steps.filter(Boolean).slice(0, 16) : [];
+    for (const s of list) {
+      const li = document.createElement('li');
+      li.textContent = s;
+      grp.working.append(li);
+    }
+    grp.working.classList.toggle('show', list.length > 1);
   }
 
   function showAnswer(grp, { state, text = '', title = '' }) {
@@ -141,7 +158,7 @@
 
   function removeGroup(grp) {
     clearTimeout(grp.timer);
-    if (grp.el) { grp.el.remove(); grp.reading.remove(); }
+    if (grp.el) { grp.el.remove(); grp.reading.remove(); grp.working.remove(); }
     groups = groups.filter((x) => x !== grp);
   }
 
@@ -189,8 +206,22 @@
     const res = grp.result;
     switch (res && res.status) {
       case 'writing':
-      case 'answer':
-      case 'solved': showAnswer(grp, { state: 'done', text: res.answer, title: res.expression }); return;
+      case 'answer': showAnswer(grp, { state: 'done', text: res.answer, title: res.expression }); return;
+      case 'solved': {
+        // Two lines like x + y = 5 and x − y = 1 are one problem: solve them together.
+        const lines = groups.filter((g) => g.result && g.result.status === 'solved' && g.result.system);
+        if (res.system && lines.length > 1) {
+          const sys = await api.invoke('math:system', lines.map((g) => g.result.expression)).catch(() => null);
+          if (sys && sys.ok) {
+            lines.forEach((g) => { showAnswer(g, { state: 'done', text: sys.answer, title: 'Solved together' }); showWorking(g, null); });
+            showWorking(lines[lines.length - 1], sys.steps);
+            return;
+          }
+        }
+        showAnswer(grp, { state: 'done', text: res.answer, title: res.expression });
+        showWorking(grp, res.steps);
+        return;
+      }
       case 'right': showAnswer(grp, { state: 'right', text: '✓', title: 'Correct' }); return;
       case 'wrong': showAnswer(grp, { state: 'wrong', text: res.answer, title: `That's ${res.answer}, not ${res.given}` }); return;
       default: break;
@@ -204,7 +235,7 @@
     }
     if (!groups.includes(grp) || grp.version !== version) return;
     if (!ai.ok || !ai.answer) showAnswer(grp, { state: 'unknown', text: '?', title: ai.message || 'Couldn’t solve that' });
-    else showAnswer(grp, { state: 'done', text: ai.answer.replace(/^=\s*/, ''), title: ai.expression });
+    else { showAnswer(grp, { state: 'done', text: ai.answer.replace(/^=\s*/, ''), title: ai.expression }); showWorking(grp, ai.steps); }
   }
 
   function schedule(grp) {
@@ -212,6 +243,7 @@
     grp.result = null;
     clearTimeout(grp.timer);
     showAnswer(grp, { state: 'none' }); // the ink changed: the old answer no longer applies
+    if (grp.working) showWorking(grp, null);
     grp.timer = setTimeout(() => read(grp), PAUSE_MS);
   }
 

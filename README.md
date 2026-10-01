@@ -29,7 +29,19 @@ The last setup step checks your GPU, memory, and disk and recommends a Qwen3-VL 
 
 4B is the smallest size offered: 2B was too weak at choosing actions and tended to describe what it
 would do instead of doing it. An existing 2B install is removed and replaced with the recommended
-size automatically.
+size automatically. Switching models needs no restart: the new one is loaded straight away and the
+old one (and its saved prompts) deleted.
+
+**Memory matters more than disk.** The model runs in RAM, not on disk. 4B needs about 3 GB of free
+RAM; on an 8 GB PC with a browser and other apps open it can load slowly and answer slowly, because
+Windows starts swapping. On PCs under 12 GB Bigfoot uses a smaller, compressed working memory and a
+single copy of the weights to fit. Closing heavy apps (browser tabs especially) makes a big
+difference.
+
+**Startup:** Bigfoot loads speech recognition first (a few seconds), then the AI. A small card in the
+corner of the screen, and a bar in the chat, show each step and the percentage until it says
+"Bigfoot is ready". You can type meanwhile; the answer comes as soon as it's loaded. A load that is
+still making progress is never cut off; if it truly fails, the chat offers **Try Again**.
 
 You can keep using Bigfoot while it downloads; a banner in the main window shows progress with
 Pause, Resume, and Retry. Losing the connection, going offline, or quitting never restarts the
@@ -93,7 +105,11 @@ strokes and fills), which becomes ordinary ink you can undo or erase.
 **Tidy** (wand button or T): rough lines, circles, ellipses, rectangles, triangles, and diamonds
 become perfect shapes as you finish them. With Tidy off, hold the pen still for half a second at the
 end of a stroke to snap just that one. Handwriting, scribbles, and other shapes are left as drawn.
-Ask the AI to "neaten my drawing" to tidy everything at once.
+Ask the AI to "neaten my drawing" to tidy everything at once. The AI can also read your whole
+drawing as SVG code, edit it (recolor, fix, restyle, add labels), and put it back in place.
+
+**Share** (share button or Ctrl+C in Draw): copy the screen with your drawing to paste anywhere
+(chat, email, documents), or save it to Pictures › Bigfoot as a PNG picture or as an SVG vector file.
 Shortcuts: V P H B E L A R O for tools, 1–8 for colors, [ ] for size, Ctrl+Z / Ctrl+Y, Delete to
 clear, Esc to close.
 
@@ -102,12 +118,19 @@ of a second and shows the clean reading underneath, so a misread is obvious at o
 next to an expression (or **Solve all**, or Enter). "=" never means "answer" by itself: sums are
 computed exactly, a sum with your own answer (12 + 7 = 19) is checked (✓, or the right answer), and
 equations with one unknown, such as 2x + 1 = 7, 3x + 2 = 2x + 5, or x² − 5x + 6 = 0, are solved on
-your PC in an instant. Only harder ones (two unknowns) go to the AI model. Numbers written with gaps
-("0", then "100", then "×" between them) join into one expression.
+your PC in an instant. So are equations with several unknowns (2x + 2y = 6 → y = 3 − x), equations
+on separate lines solved together (x + y = 5 and x − y = 1 → x = 3, y = 2), and powers written as a
+small raised number (x², 2ˣ). Derivatives (d/dx), integrals (∫ … dx, with limits), limits, sums, and
+vectors (dot and cross products, [1,2,3] notation) are computed exactly by a symbolic math engine
+(nerdamer, MIT) on your PC; when the handwriting is too complex for Windows to read, the AI model
+only *reads* it and the engine still does the math, so answers are never guessed. For equations,
+systems, calculus, and vectors the **working** is shown step by step under the answer. Numbers
+written with gaps ("0", then "100", then "×" between them) join into one expression.
 
 **Point** (or Ctrl + Alt and drag): circle part of the screen and a small box appears right beside
 it. Type your question and press Enter, or just speak if Talk is on. The Bigfoot window stays where
-it is, and the mark fades once the question is taken.
+it is, and the mark fades once the question is taken. The area you marked appears as a picture with
+your question in the chat.
 
 The Home window is a chat with Bigfoot. It stays open while you chat and steps aside only when
 Bigfoot starts using the mouse or keyboard.

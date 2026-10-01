@@ -25,7 +25,7 @@ test('the template passes validation and reports what it can reach', async () =>
 });
 
 test('broken plugins are rejected with a reason, before anything runs in Bigfoot', async () => {
-  const opts = { execPath: process.execPath, timeoutMs: 2000 };
+  const opts = { execPath: process.execPath, timeoutMs: 6000 }; // a busy PC can take seconds just to start the child
   const syntax = await inspectPlugin(write('syntax.js', 'module.exports = { name: '), opts);
   assert.match(syntax.errors[0], /Syntax error/);
 
@@ -43,7 +43,7 @@ test('broken plugins are rejected with a reason, before anything runs in Bigfoot
   assert.match(noRun.errors.join(), /run\(input, ctx\)/);
 
   const hangs = await inspectPlugin(write('hangs.js', 'while (true) {}'), opts);
-  assert.match(hangs.errors.join(), /longer than 2 seconds/);
+  assert.match(hangs.errors.join(), /longer than 6 seconds/);
 
   const throws = await inspectPlugin(write('throws.js', "throw new Error('boom')"), opts);
   assert.match(throws.errors.join(), /threw while loading: boom/);

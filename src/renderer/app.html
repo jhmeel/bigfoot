@@ -46,6 +46,13 @@
             <button class="btn primary small" id="btn-setup">Set Up</button>
           </div>
 
+          <div class="ai-loading" id="ai-loading" role="status" hidden>
+            <div class="ail-head"><span class="ail-dot"></span><span id="ai-loading-text">Loading the AI…</span><span class="ail-pct" id="ai-loading-pct"></span>
+              <button class="btn plain small" id="ai-loading-retry" hidden>Try Again</button></div>
+            <div class="ail-track"><i id="ai-loading-bar"></i></div>
+            <div class="ail-note" id="ai-loading-note"></div>
+          </div>
+
           <div class="log scroll" id="log" aria-live="polite">
             <div class="empty" id="empty">
               <img src="assets/icon.png" width="48" height="48" alt="" class="empty-mark">
@@ -121,7 +128,7 @@
             <div class="row"><div class="label">Keep the AI loaded<div class="hint">Instant replies. The model stays in memory while Bigfoot runs; turn off to free it after 10 idle minutes.</div></div>
               <div class="control"><label class="switch"><input type="checkbox" id="keep-loaded"><span class="track"></span></label></div></div>
           </div>
-          <div class="local-foot"><a data-link="qwen">About Qwen3-VL</a><span class="spacer"></span><button class="btn plain small" id="local-remove" hidden>Remove Model</button></div>
+          <div class="local-foot"><a data-link="qwen">About Qwen3-VL</a></div>
 
           <div class="section-label">Cloud models <span class="optional">Optional</span></div>
           <div class="cloud-note"><span class="warn-icon"></span><span>Cloud models need an internet connection and your own API key. Whenever you’re offline, Bigfoot uses the model on this PC.</span></div>

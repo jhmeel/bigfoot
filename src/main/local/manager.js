@@ -74,6 +74,9 @@ class LocalModelManager extends EventEmitter {
     const leftovers = catalog.RETIRED.map((r) => this.modelDir(r)).filter((d) => fs.existsSync(d));
     if (!catalog.RETIRED.includes(id) && !leftovers.length) return null;
     for (const d of leftovers) await fs.promises.rm(d, { recursive: true, force: true }).catch(() => {});
+    for (const f of await fs.promises.readdir(path.join(this.dir, 'cache')).catch(() => [])) {
+      if (catalog.RETIRED.some((r) => f.startsWith(`${r}-`))) await fs.promises.rm(path.join(this.dir, 'cache', f), { force: true }).catch(() => {});
+    }
     if (!catalog.RETIRED.includes(id)) return null;
     this.settings.update({ localModel: '' });
     if (this.job && this.active()) return this.job.modelId;
@@ -361,8 +364,15 @@ class LocalModelManager extends EventEmitter {
     const previous = this.installedId();
     this.settings.update({ localModel: job.modelId });
     if (previous && previous !== job.modelId) {
-      this.emit('removing', previous);
-      await fs.promises.rm(this.modelDir(previous), { recursive: true, force: true }).catch(() => {});
+      this.emit('removing', previous); // the runtime stops the old model: Windows can't delete files in use
+      for (let attempt = 0; attempt < 10; attempt++) {
+        try {
+          await fs.promises.rm(this.modelDir(previous), { recursive: true, force: true });
+          break;
+        } catch {
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      }
     }
     for (const entry of await fs.promises.readdir(path.join(this.dir, 'runtime')).catch(() => [])) {
       if (entry !== catalog.RUNTIME_TAG) await fs.promises.rm(path.join(this.dir, 'runtime', entry), { recursive: true, force: true }).catch(() => {});

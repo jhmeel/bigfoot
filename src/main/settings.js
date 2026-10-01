@@ -49,6 +49,7 @@ const DEFAULTS = {
   launchAtLogin: false,
   onboarded: false,
   onboardedVersion: 0,            // which setup flow was completed (2 = with the on-device model step)
+  femaleVoiceDefault: true,       // set once the old male default voice has been cleared
 };
 
 class Settings {
@@ -80,6 +81,14 @@ class Settings {
       // A cloud provider without its key (the old default) falls back to the local model.
       const keyFor = { anthropic: 'anthropicKey', openai: 'openaiKey' }[this.values.provider];
       if (keyFor && !this.secrets[keyFor]) this.values.provider = 'local';
+      // Setup used to save whichever Windows voice came first (usually a male one); the default is
+      // now a female voice. Done once, so a voice picked later in Settings is kept.
+      if (!raw.femaleVoiceDefault) {
+        const { isMaleVoice } = require('./voice');
+        if (isMaleVoice(this.values.systemVoice)) this.values.systemVoice = '';
+        if (isMaleVoice(this.values.openaiVoice)) this.values.openaiVoice = 'coral';
+        this.values.femaleVoiceDefault = true;
+      }
     } catch (err) {
       if (err.code !== 'ENOENT') console.error('Settings could not be read, using defaults:', err.message);
     }

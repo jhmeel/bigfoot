@@ -4,6 +4,7 @@
 // without a graphics card.
 
 const { spawn } = require('child_process');
+const { EventEmitter } = require('events');
 const fs = require('fs');
 const net = require('net');
 const os = require('os');
@@ -11,7 +12,9 @@ const path = require('path');
 const { app } = require('electron');
 const { SPEECH } = require('./catalog');
 
-const START_TIMEOUT_MS = 60000;
+// Generous: on a PC short of memory (the AI loading at the same time) Whisper starts slowly.
+const START_TIMEOUT_MS = 180000;
+const TRANSCRIBE_TIMEOUT_MS = 120000;
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -33,9 +36,11 @@ function speechPaths() {
   return fs.existsSync(server) && fs.existsSync(model) ? { server, model, cwd: path.dirname(server) } : null;
 }
 
-class SpeechService {
+class SpeechService extends EventEmitter {
   constructor({ logger } = {}) {
+    super();
     this.logger = logger;
+    this.state = 'stopped';
     this.proc = null;
     this.base = null;
     this.starting = null;
@@ -49,20 +54,44 @@ class SpeechService {
 
   async ensure() {
     if (this.base) return this.base;
-    if (!this.starting) this.starting = this.launch().finally(() => { this.starting = null; });
+    if (!this.starting) {
+      this.setState('loading');
+      this.starting = this.launch()
+        .then((base) => { this.setState('ready'); return base; })
+        .catch((err) => {
+          this.setState('failed', err.message);
+          if (this.logger) this.logger.error('Speech recognizer failed to start', err.message);
+          throw err;
+        })
+        .finally(() => { this.starting = null; });
+    }
     return this.starting;
+  }
+
+  setState(state, message = '') {
+    this.state = state;
+    this.emit('state', { state, message });
   }
 
   async launch() {
     const files = speechPaths();
     if (!files) throw new Error('The speech recognizer is missing from this installation. Reinstall Bigfoot to restore it.');
+    this.stopping = false;
     const port = await freePort();
     const threads = Math.max(2, Math.round(os.cpus().length / 2) - 1);
     const proc = spawn(files.server, ['-m', files.model, '--host', '127.0.0.1', '--port', String(port), '-l', 'en', '-nt', '-t', String(threads)],
       { cwd: files.cwd, windowsHide: true, stdio: 'ignore' });
     this.proc = proc;
     try { os.setPriority(proc.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* not critical */ }
-    proc.once('exit', () => { if (this.proc === proc) { this.proc = null; this.base = null; } });
+    proc.once('exit', () => {
+      if (this.proc !== proc) return;
+      this.proc = null;
+      this.base = null;
+      this.setState('stopped');
+      const now = Date.now();
+      this.crashes = (this.crashes || []).filter((t) => now - t < 10 * 60 * 1000);
+      if (!this.stopping && this.crashes.length < 3) { this.crashes.push(now); setTimeout(() => this.preload(), 2000); } // it crashed: bring it back
+    });
     const base = `http://127.0.0.1:${port}`;
     const deadline = Date.now() + START_TIMEOUT_MS;
     while (Date.now() < deadline) {
@@ -81,12 +110,13 @@ class SpeechService {
     form.append('file', new Blob([wav], { type: 'audio/wav' }), 'speech.wav');
     form.append('response_format', 'json');
     form.append('temperature', '0');
-    const res = await fetch(`${base}/inference`, { method: 'POST', body: form, signal: AbortSignal.timeout(60000) });
+    const res = await fetch(`${base}/inference`, { method: 'POST', body: form, signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS) });
     if (!res.ok) throw new Error(`speech recognizer returned ${res.status}`);
     return cleanTranscript((await res.json()).text);
   }
 
   stop() {
+    this.stopping = true;
     this.base = null;
     if (this.proc) { try { this.proc.kill(); } catch { /* gone */ } this.proc = null; }
   }
