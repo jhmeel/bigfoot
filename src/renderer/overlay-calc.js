@@ -111,14 +111,20 @@
     showResult(r);
   }
 
+  const ICON_COPY = '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="7" width="9.5" height="9.5" rx="1.8"/><path d="M13 7V5a1.5 1.5 0 0 0-1.5-1.5h-6A1.5 1.5 0 0 0 4 5v6a1.5 1.5 0 0 0 1.5 1.5H7"/></svg>';
+  const ICON_TICK = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"/></svg>';
+  const copyBtn = $('calc-copy');
+  copyBtn.innerHTML = ICON_COPY;
+
   async function copy() {
-    if (!last) { result.textContent = 'Calculate something first'; return; }
+    if (!last) return;
     const lines = [last.text, `= ${last.answer}`];
     if (last.steps.length > 1) lines.push('', 'Working:', ...last.steps.map((s, i) => `${i + 1}. ${s}`));
     const res = await api.invoke('math:share', lines.join('\n')).catch(() => null);
-    const before = result.textContent;
-    result.textContent = res && res.ok ? 'Copied: paste it anywhere' : 'Couldn’t copy';
-    setTimeout(() => { if (last) result.textContent = before; }, 1500);
+    if (!(res && res.ok)) return;
+    copyBtn.innerHTML = ICON_TICK; // copied: a tick for a moment, then the copy icon again
+    copyBtn.classList.add('done');
+    setTimeout(() => { copyBtn.innerHTML = ICON_COPY; copyBtn.classList.remove('done'); }, 1600);
   }
 
   input.addEventListener('keydown', (e) => {

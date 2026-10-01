@@ -171,9 +171,13 @@ body.math #math-layer { display: block; pointer-events: auto; cursor: crosshair;
 .math-card > .math-answer[data-state='thinking'] { margin: 2px 4px; }
 .math-card > .math-working:not(.show) { display: none; }
 .math-card > .math-reading:not(.show) { display: none; }
-.math-share { pointer-events: auto; height: 24px; padding: 0 10px; border: 1px solid rgba(125, 178, 255, 0.45); border-radius: 6px;
-  background: rgba(51, 128, 255, 0.12); color: #cfe0ff; font: 600 12px var(--font); cursor: default; }
-.math-share:hover { background: rgba(51, 128, 255, 0.25); }
+.math-share, .calc-copy {
+  pointer-events: auto; display: inline-grid; place-items: center; width: 26px; height: 24px; padding: 0; border-radius: 6px; cursor: default;
+  border: 1px solid rgba(125, 178, 255, 0.4); background: rgba(51, 128, 255, 0.12); color: #cfe0ff; transition: background 120ms, color 120ms;
+}
+.math-share svg, .calc-copy svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.math-share:hover, .calc-copy:hover { background: rgba(51, 128, 255, 0.25); }
+.math-share.done, .calc-copy.done { color: #32d74b; border-color: rgba(50, 215, 75, 0.5); background: rgba(50, 215, 75, 0.12); }
 .math-share[hidden] { display: none; }
 .math-answer {
   position: absolute; transform: translateY(-50%) scale(0.9); opacity: 0; white-space: nowrap;
@@ -206,8 +210,6 @@ body.math #math-layer { display: block; pointer-events: auto; cursor: crosshair;
 .calc-input { text-align: right; }
 .calc-out { display: flex; align-items: center; gap: 8px; margin: 7px 2px 6px; min-height: 28px; }
 .calc-result { flex: 1; min-width: 0; text-align: right; font-size: 22px; font-weight: 600; color: #fff; overflow-wrap: anywhere; user-select: text; font-variant-numeric: tabular-nums; }
-.calc-copy { height: 24px; padding: 0 9px; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 6px; background: transparent; color: #c9cfcc; font: 600 11px var(--font); }
-.calc-copy:hover { background: rgba(255, 255, 255, 0.08); }
 .calc-result:empty + .calc-copy { visibility: hidden; }
 .calc-result[data-state='error'] { font-size: 13px; color: #ffb224; }
 .calc-result[data-state='busy'] { font-size: 13px; color: #8f969c; }

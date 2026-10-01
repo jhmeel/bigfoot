@@ -163,6 +163,9 @@
     requestAnimationFrame(() => keepOnScreen(grp));
   }
 
+  const ICON_SHARE = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12.5V3M6.5 6.5L10 3l3.5 3.5"/><path d="M6 9.5H5a1.5 1.5 0 0 0-1.5 1.5v4.5A1.5 1.5 0 0 0 5 17h10a1.5 1.5 0 0 0 1.5-1.5V11A1.5 1.5 0 0 0 15 9.5h-1"/></svg>';
+  const ICON_TICK = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"/></svg>';
+
   const button = (cls, label, onClick) => {
     const b = document.createElement('button');
     b.className = cls;
@@ -177,8 +180,10 @@
     const lines = [grp.readingText, grp.answer && !grp.answer.endsWith('✓') ? `Answer: ${grp.answer}` : grp.answer];
     if (grp.steps && grp.steps.length > 1) lines.push('', 'Working:', ...grp.steps.map((s, i) => `${i + 1}. ${s}`));
     const res = await api.invoke('math:share', lines.filter((l) => l != null).join('\n')).catch(() => null);
-    btn.textContent = res && res.ok ? 'Copied' : 'Couldn’t copy';
-    setTimeout(() => { btn.textContent = 'Share'; }, 1800);
+    if (!(res && res.ok)) return;
+    btn.innerHTML = ICON_TICK; // copied: a tick for a moment, then the share icon again
+    btn.classList.add('done');
+    setTimeout(() => { btn.innerHTML = ICON_SHARE; btn.classList.remove('done'); }, 1600);
   }
 
   /** What the recognizer read, typeset under the handwriting with its Solve and Share buttons. */
@@ -189,8 +194,10 @@
     if (text) {
       const label = document.createElement('span');
       label.textContent = text;
-      grp.shareBtn = button('math-share', 'Share', (b) => share(grp, b));
-      grp.shareBtn.title = 'Copy the problem, answer, and working to paste anywhere';
+      grp.shareBtn = button('math-share', '', (b) => share(grp, b));
+      grp.shareBtn.innerHTML = ICON_SHARE;
+      grp.shareBtn.title = 'Share: copies the problem, answer, and working';
+      grp.shareBtn.setAttribute('aria-label', 'Share');
       grp.shareBtn.hidden = !grp.answer;
       grp.reading.append(label, button('math-solve', 'Solve', () => solve(grp)), grp.shareBtn);
     }

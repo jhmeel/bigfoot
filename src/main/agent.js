@@ -176,6 +176,7 @@ class Agent {
       } else {
         request = (p) => p.addUserMessage(task);
       }
+      if (provider.startTask) provider.startTask(); // keep earlier turns lean (local model)
       request(provider);
       try {
         return await this.loop(provider, this.abort.signal);
@@ -185,6 +186,7 @@ class Agent {
         this.provider = null;
         provider = this.ensureProvider({ online: false });
         this.hooks.terminal('info', `Using ${llm.describe(this.settings, provider.id)}`);
+        if (provider.startTask) provider.startTask();
         request(provider);
         return await this.loop(provider, this.abort.signal);
       }
