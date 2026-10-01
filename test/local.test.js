@@ -462,3 +462,16 @@ test('2B is no longer offered, and an installed 2B is replaced by the recommende
   await m.cancel();
   assert.equal(await m.replaceRetired(async () => ({ pick: 'qwen3-vl-4b' })), null); // only once
 });
+
+test('old screen lists are dropped in batches, keeping the latest two', () => {
+  const { LocalProvider } = require('../src/main/llm/local');
+  const p = new LocalProvider({ runtime: {}, model: 'm', system: 's', tools: [], screen: { width: 1000, height: 1000 } });
+  for (let i = 0; i < 5; i++) p.messages.push({ role: 'tool', tool_call_id: `c${i}`, content: `Clicked ${i}.\nOn screen: "w" (app).\n[1] button "b${i}" @1,1` });
+  p.trimLists();
+  const contents = p.messages.slice(1).map((m) => m.content);
+  assert.equal(contents.filter((c) => /older screen list removed/.test(c)).length, 3);
+  assert.match(contents[0], /^Clicked 0\.\n\(older screen list removed\)$/);
+  assert.match(contents[4], /\[1\] button "b4"/);
+  p.trimLists(); // with two left there's nothing more to drop
+  assert.equal(p.messages.slice(1).filter((m) => /On screen:/.test(m.content)).length, 2);
+});

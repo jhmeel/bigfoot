@@ -478,7 +478,10 @@ internal static class ScreenReader
             uint pid; GetWindowThreadProcessId(h, out pid);
             if (pid == excludePid) return true;
             int cloaked; if (DwmGetWindowAttribute(h, 14, out cloaked, 4) == 0 && cloaked != 0) return true;
-            if ((GetWindowLong(h, -20) & 0x80) != 0) return true; // tool windows (tooltips, overlays)
+            int ex = GetWindowLong(h, -20);
+            if ((ex & 0x80) != 0) return true; // tool windows (tooltips)
+            if ((ex & 0x20) != 0 && (ex & 0x80000) != 0) return true; // click-through overlays (layered + transparent)
+            if ((ex & 0x08000000) != 0 && (ex & 0x8) != 0) return true; // always-on-top windows that never take focus
             var cls = new StringBuilder(256); GetClassName(h, cls, cls.Capacity);
             if (Shell.Contains(cls.ToString())) return true;
             RECT r; if (!GetWindowRect(h, out r) || r.Right - r.Left < 80 || r.Bottom - r.Top < 60) return true;

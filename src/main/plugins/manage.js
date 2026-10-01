@@ -14,6 +14,7 @@ const BUILTIN_GROUPS = {
   'builtin/apps.js': 'Open apps and websites',
   'builtin/files.js': 'Files and folders',
   'builtin/shell.js': 'Run commands',
+  'builtin/screen.js': 'Read and use the screen',
 };
 
 class PluginManager {

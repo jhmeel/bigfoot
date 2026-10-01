@@ -71,8 +71,18 @@ and saved to disk, so later starts are ready in about a second; replies appear w
 on PCs without a graphics card it runs on the CPU with smaller screenshots, at lower priority and
 one core short, so Windows stays responsive. Measured on an 8 GB laptop without a graphics card
 (i5-8350U): a chat answer in about 8 seconds, a question about the screen in about 30. With a
-graphics card it's a few seconds per step. It points reliably at labelled buttons, menus, and links,
-and less reliably at small unlabelled icons.
+graphics card it's a few seconds per step.
+
+**Reading the screen.** Bigfoot reads the screen the way screen readers do (Windows UI Automation):
+the front window's buttons, links, text boxes, tabs, menus and text, with their names, states and
+exact positions, in about half a second. The AI is shown the elements that matter for the request
+and acts on them by number; Bigfoot clicks their real centres and reports what changed, so it never
+guesses positions from a picture. Simple commands ("click Sign in", "scroll down", "go back",
+"press Enter") run straight away without the AI. Screenshots are still used for pictures, drawings,
+marked areas, and apps that draw everything themselves (games, canvas apps, remote desktops).
+
+**Handwritten math.** The math tool reads handwriting with Pix2Text MFR 1.5 (MIT), bundled and run
+on the CPU with ONNX Runtime: about a second per line.
 
 ## Using it
 
@@ -213,9 +223,12 @@ src/main/             Electron main process
   math.js mathink.js  exact arithmetic and handwriting reading for the math tool
   computer.js         computer actions (click, type, drag, scroll…)
   capture.js          screenshots and coordinate mapping
+  screenread.js       the screen as a list of elements (UI Automation), for the AI and quick commands
+  uicommand.js        "click …", "scroll down" and other commands done without the AI
+  mathread.js latex.js  the handwritten-math reader and its LaTeX → plain math
   plugins/            tool registry, built-in tools, validator, template
   windows.js          window management
-  native/             input helper (SendInput, desktop double-click, wake word, offline STT)
+  native/             input helper (SendInput, UI Automation, desktop double-click, wake word, math ink)
 src/renderer/         overlay (buddy, Draw, Math), tool tray, main window, onboarding, audio engine
 build/installer.nsh   installer additions (uninstall prompt, helper shutdown)
 docs/                 plugin guide and technical report
@@ -223,7 +236,8 @@ docs/                 plugin guide and technical report
 
 The native helper (`src/main/native/InputHelper.cs`) is compiled with the C# compiler that ships
 with Windows. `npm start` and `npm run dist` build it automatically when it's missing or out of date, and fetch
-the bundled speech recognizer into `vendor/speech` (SHA-256 verified; not committed). To rebuild the
+the bundled speech recognizer into `vendor/speech` and the math reader into `vendor/math` (SHA-256
+verified; not committed). To rebuild the
 helper by hand:
 
 ```bash

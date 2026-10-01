@@ -12,6 +12,7 @@ const { readInk, interpretInk, splitScripts, pretty } = require('./mathink');
 const { solveSystem, evaluate, solveEquation, normalize: normalizeMath } = require('./math');
 const cas = require('./cas');
 const { matchIntent } = require('./intents');
+const { matchUiCommand } = require('./uicommand');
 const { mathmlToText } = require('./mathml');
 const { latexToText } = require('./latex');
 const mathread = require('./mathread');
@@ -773,6 +774,21 @@ class Controller {
     this.bubble(intent ? '' : local && this.runtime.preparing ? `getting ready for first use (${this.runtime.preparing.percent}%). your answer comes right after…`
       : local && !this.runtime.running ? 'one moment, my AI is still loading…' : '');
     try {
+      // "click Sign in", "scroll down": done from the screen list in about a second, no model.
+      const uiCommand = !intent && !region && !drawing ? matchUiCommand(text) : null;
+      if (uiCommand) {
+        this.setState('acting');
+        const reply = await this.agent.runUiCommand(uiCommand, text).catch((err) => {
+          this.logger.error('On-screen command failed, asking the AI', err.message);
+          return null;
+        });
+        if (reply != null) {
+          if (reply) await this.presentReply(reply, null, display.id);
+          else this.setState('idle');
+          return { ok: true };
+        }
+        this.setState('processing'); // not clear which element: the model decides, with the list
+      }
       if (intent) {
         this.setState('acting');
         await this.agent.runDirect(intent.calls);

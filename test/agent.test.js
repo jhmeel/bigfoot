@@ -230,3 +230,51 @@ test('a traced outline is drawn onto the screenshot sent with the question', asy
     assert.match(provider.user[0].text, /outlined in blue/);
   } finally { restore(); }
 });
+
+intentTest('simple on-screen commands are understood without the model, and only when clear', () => {
+  const { matchUiCommand, findElement } = require('../src/main/uicommand');
+  intentAssert.deepEqual(matchUiCommand('click Sign in'), { kind: 'click', what: 'Sign in', reply: '' });
+  intentAssert.equal(matchUiCommand('Hey Bigfoot, press the Search button').what, 'Search');
+  intentAssert.equal(matchUiCommand('scroll down a bit').amount, 3);
+  intentAssert.equal(matchUiCommand('press enter').keys, 'enter');
+  intentAssert.equal(matchUiCommand('go back').keys, 'alt+left');
+  intentAssert.equal(matchUiCommand('click the first result and then download it'), null);
+  intentAssert.equal(matchUiCommand('what is on my screen'), null);
+  const el = (id, kind, name, x, y, states = '') => ({ id, kind, name, center: { x, y }, states: new Set(states) });
+  const snap = { items: [el(0, 'item', 'Images', 100, 50), el(1, 'link', 'Images', 101, 50), el(2, 'button', 'Sign in', 900, 40), el(3, 'button', 'Search', 500, 40), el(4, 'button', 'Search by voice', 560, 40), el(5, 'link', 'Settings', 10, 10, 'd')] };
+  intentAssert.equal(findElement(snap, 'images').id, 1); // the link, not the list item around it
+  intentAssert.equal(findElement(snap, 'sign in').id, 2);
+  intentAssert.equal(findElement(snap, 'search').id, 3); // the exact name wins over "Search by voice"
+  intentAssert.equal(findElement(snap, 'settings'), null); // disabled
+  intentAssert.equal(findElement(snap, 'download'), null);
+});
+
+intentTest('the screen list shows what matters for the task, numbered, in reading order', () => {
+  const { ScreenReader } = require('../src/main/screenread');
+  const ui = new ScreenReader({ input: null });
+  const item = (id, type, name, [x, y, w, h], s = '', value = '') => ({ id, type, kind: { Button: 'button', Hyperlink: 'link', Edit: 'box', ListItem: 'item', Text: 'text', Pane: null }[type] || null,
+    name, value, rect: { x, y, w, h }, center: { x: x + w / 2, y: y + h / 2 }, states: new Set(s), writable: s.includes('w') });
+  const target = { physicalToSent: (p) => ({ x: p.x / 2, y: p.y / 2 }) };
+  const snap = { window: 'best afrobeat songs - Google Search - Google Chrome', app: 'chrome', target, items: [
+    item(0, 'Pane', 'Chrome', [0, 0, 1920, 1080]),
+    item(1, 'Button', 'Minimize', [1700, 0, 60, 40]),
+    item(2, 'Edit', 'Address and search bar', [400, 100, 800, 40], 'w', 'google.com/search?q=afrobeat'),
+    item(3, 'ListItem', 'Videos', [600, 300, 100, 60]),
+    item(4, 'Hyperlink', 'Videos', [600, 300, 100, 60], 'i', 'https://www.google.com/search?tbm=vid'),
+    item(5, 'Hyperlink', 'Burna Boy - Last Last (Official Video)', [300, 500, 600, 40], 'i', 'https://www.youtube.com/watch?v=1'),
+    item(6, 'Text', 'Burna Boy - Last Last', [300, 505, 400, 30]),
+    item(7, 'Button', 'Sign in', [1800, 100, 80, 40], 'd'),
+  ] };
+  const text = ui.describe(snap, 'open the youtube video', { limit: 10 });
+  intentAssert.match(text, /^On screen: "best afrobeat songs - Google Search - Google Chrome" \(chrome\)\./);
+  intentAssert.match(text, /\[5\] link "Burna Boy - Last Last \(Official Video\)" \(youtube\.com\) @300,260/);
+  intentAssert.match(text, /\[2\] box "Address and search bar" = "google\.com\/search\?q=afrobeat"/);
+  intentAssert.match(text, /\[7\] button "Sign in" \(disabled\)/);
+  intentAssert.doesNotMatch(text, /Minimize|\[3\]|\[6\]/); // window buttons and doubles left out
+  intentAssert.ok(text.indexOf('[2]') < text.indexOf('[4]') && text.indexOf('[4]') < text.indexOf('[5]'), 'top to bottom');
+  intentAssert.deepEqual([...ui.shown.keys()].sort(), [2, 4, 5, 7]);
+  // Only the most relevant fit when the list is cut short.
+  const short = ui.describe(snap, 'youtube video burna', { limit: 1 });
+  intentAssert.match(short, /\[5\]/);
+  intentAssert.match(short, /3 more not shown/);
+});
