@@ -165,11 +165,17 @@
     if (!status) return;
     const { ai, voice } = status;
     const box = $('ai-loading');
-    const loading = ai.state === 'loading';
+    const loading = ai.state === 'loading' || ai.state === 'preparing';
     box.hidden = !(loading || ai.state === 'failed');
-    box.dataset.state = ai.state;
+    box.dataset.state = ai.state === 'preparing' ? 'loading' : ai.state;
     $('ai-loading-retry').hidden = ai.state !== 'failed';
-    if (loading) {
+    if (ai.state === 'preparing') {
+      $('ai-loading-text').textContent = 'Getting ready for first use';
+      const secs = Math.round((ai.elapsed || 0) / 1000);
+      $('ai-loading-pct').textContent = ai.percent ? `${ai.percent}%` : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+      $('ai-loading-bar').style.width = `${ai.percent}%`;
+      $('ai-loading-note').textContent = 'One time only: Bigfoot is reading its instructions and tools, then saves them so every later start is instant. You can type now; your answer comes right after.';
+    } else if (loading) {
       $('ai-loading-text').textContent = `Loading the AI · ${ai.label}`;
       $('ai-loading-pct').textContent = `${ai.percent}%`;
       $('ai-loading-bar').style.width = `${ai.percent}%`;

@@ -355,7 +355,14 @@
   layer.addEventListener('pointermove', (e) => {
     moveCursor(e);
     if (erased) { for (const ev of e.getCoalescedEvents ? e.getCoalescedEvents() : [e]) eraseAt({ x: ev.clientX, y: ev.clientY }); return; }
-    if (!current || current.snapped) return;
+    if (!current) return;
+    if (current.snapped) {
+      // A pause snapped the shape, but the pen kept going: it was only a pause. Carry on drawing
+      // the original stroke from where it was, as if the snap never happened.
+      if (Math.hypot(e.clientX - holdAt.x, e.clientY - holdAt.y) <= 8) return;
+      current = current.raw;
+      redrawLive();
+    }
     if (Math.hypot(e.clientX - holdAt.x, e.clientY - holdAt.y) > 4) { holdAt = { x: e.clientX, y: e.clientY }; armHold(); }
     if (TOOLS[current.tool].shape) {
       const b = { x: e.clientX, y: e.clientY };
@@ -376,7 +383,7 @@
     clearTimeout(holdTimer);
     holdTimer = setTimeout(() => {
       const t = tidied(current);
-      if (t) { current = { ...t, snapped: true }; redrawLive(); }
+      if (t) { current = { ...t, snapped: true, raw: current }; redrawLive(); }
     }, 550);
   }
 
@@ -390,7 +397,7 @@
     if (!current) return;
     let s = current;
     current = null;
-    if (s.snapped) delete s.snapped;
+    if (s.snapped) { delete s.snapped; delete s.raw; }
     else if (prefs.tidy) s = tidied(s) || s;
     redrawLive();
     const pts = s.points;

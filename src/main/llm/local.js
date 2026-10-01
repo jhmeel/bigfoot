@@ -5,7 +5,8 @@
 const crypto = require('crypto');
 const { OpenAIProvider, ask } = require('./openai');
 const { computerFunction } = require('./computer-schema');
-const { ProviderError, requestJson } = require('./errors');
+const { ProviderError } = require('./errors');
+const { localPost } = require('./localhttp');
 
 const GRID = 1000;
 const LOCAL_TIMEOUT_MS = 10 * 60 * 1000; // a first, uncached request on a slow CPU can take minutes
@@ -59,15 +60,17 @@ class LocalProvider extends OpenAIProvider {
    * saved to disk, so after a restart it's restored in seconds instead of read again (100 s on a
    * laptop without a graphics card).
    */
-  async warm() {
+  async warm(onProgress = () => {}) {
     const { url, key } = await this.endpoint();
     const file = `${this.model}-${crypto.createHash('sha1').update(JSON.stringify([this.messages[0], this.tools])).digest('hex').slice(0, 16)}.bin`;
     const restored = await this.runtime.slot('restore', file);
-    await requestJson(`${url}/chat/completions`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: this.model, messages: [this.messages[0], { role: 'user', content: 'hi' }], tools: this.tools, max_tokens: 1 }),
-    }, this.label, undefined, LOCAL_TIMEOUT_MS);
+    const res = await localPost(`${url}/chat/completions`, {
+      key,
+      waiting: () => true, // never cut off: this reading has to happen once, however slow the PC
+      body: { model: this.model, messages: [this.messages[0], { role: 'user', content: 'hi' }], tools: this.tools, max_tokens: 1, stream: true, return_progress: true },
+    });
+    if (!res.ok) throw new ProviderError(`${this.label} couldn’t prepare (${res.status}).`, 'Local AI problem');
+    await readStream(res, () => {}, onProgress);
     if (!restored && await this.runtime.slot('save', file)) this.runtime.pruneCache(file);
     return restored;
   }
@@ -78,25 +81,34 @@ class LocalProvider extends OpenAIProvider {
     const { url, key } = await this.endpoint();
     let res;
     try {
-      res = await fetch(`${url}/chat/completions`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      res = await localPost(`${url}/chat/completions`, {
+        key,
+        signal,
+        waiting: () => Boolean(this.runtime.preparing), // queued behind the one-time preparation
+        body: {
           model: this.model, messages: this.messages, tools: this.tools, tool_choice: 'auto',
-          ...this.requestExtras(), stream: true, stream_options: { include_usage: true },
-        }),
-        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(LOCAL_TIMEOUT_MS)]) : AbortSignal.timeout(LOCAL_TIMEOUT_MS),
+          ...this.requestExtras(), stream: true, stream_options: { include_usage: true }, return_progress: true,
+        },
       });
     } catch (err) {
       if (signal && signal.aborted) throw err;
-      throw new ProviderError(`Couldn’t reach ${this.label}.`, 'You’re offline');
+      throw err.stalled
+        ? new ProviderError(`${this.label} stopped responding. Your PC may be too busy: close some apps and try again.`, 'Local AI problem')
+        : new ProviderError(`${this.label} isn’t running. Try again in a moment.`, 'Local AI stopped');
     }
     if (!res.ok) {
       let detail = '';
       try { const b = await res.json(); detail = (b.error && (b.error.message || JSON.stringify(b.error))) || ''; } catch { /* not JSON */ }
       throw new ProviderError(`${this.label} rejected the request${detail ? `: ${detail}` : ` (${res.status})`}`, 'Request rejected');
     }
-    return readStream(res, (text) => this.onText(text));
+    try {
+      return await readStream(res, (text) => this.onText(text), (p) => { if (this.onProgress) this.onProgress(p); });
+    } catch (err) {
+      if (signal && signal.aborted) throw err;
+      throw new ProviderError(err.stalled
+        ? `${this.label} stopped responding. Your PC may be too busy: close some apps and try again.`
+        : `${this.label} stopped while answering: ${err.message}`, 'Local AI problem');
+    }
   }
 
   async endpoint() {
@@ -157,7 +169,7 @@ class LocalProvider extends OpenAIProvider {
       if (err instanceof ProviderError && /context/i.test(err.message)) {
         this.shrinkHistory();
         out = await this.runtime.use(() => super.step(signal));
-      } else if (err instanceof ProviderError && err.title === 'You’re offline') {
+      } else if (err instanceof ProviderError && (err.title === 'Local AI stopped' || err.title === 'You’re offline')) {
         this.runtime.stop(); // the server died mid-request: restart once
         out = await this.runtime.use(() => super.step(signal));
       } else {
@@ -184,7 +196,7 @@ class LocalProvider extends OpenAIProvider {
 }
 
 /** Rebuild a chat completion from its server-sent events, reporting the text as it grows. */
-async function readStream(res, onText) {
+async function readStream(res, onText, onProgress = () => {}) {
   const decoder = new TextDecoder();
   let buffer = '';
   let content = '';
@@ -198,6 +210,7 @@ async function readStream(res, onText) {
     if (!data || data === '[DONE]') return;
     let chunk;
     try { chunk = JSON.parse(data); } catch { return; }
+    if (chunk.prompt_progress) { onProgress(chunk.prompt_progress); return; } // reading the request, batch by batch
     if (chunk.model) model = chunk.model;
     if (chunk.usage) usage = chunk.usage;
     const choice = chunk.choices && chunk.choices[0];

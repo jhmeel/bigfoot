@@ -129,8 +129,12 @@ function trySolve(text) {
  * Nothing is shown until the user presses Solve; this only prepares the answer.
  */
 function interpretInk(segments) {
-  const candidates = readings(segments).map((r) => r.replace(/\s+/g, ''));
-  if (!candidates.length || !candidates[0]) return { text: '', status: 'unknown' };
+  const all = readings(segments).map((r) => r.replace(/\s+/g, ''));
+  if (!all.length || !all[0]) return { text: '', status: 'unknown' };
+  // Trust the recognizer's best reading about letters vs numbers: when it read a letter (2x, y),
+  // a lower-ranked all-digit reading (24, 2) must never replace it just because it can be computed.
+  const hasVariable = (t) => /[a-z]/i.test(digitize(t).replace(/sqrt|sin|cos|tan|log|ln|pi|lim/gi, ''));
+  const candidates = hasVariable(all[0]) ? all.filter(hasVariable) : all;
   for (const raw of candidates) {
     for (const text of [raw, digitize(raw)]) {
       const norm = normalize(text);
@@ -167,6 +171,12 @@ function interpretInk(segments) {
   }
   // Letters that aren't digits: an equation to solve, which needs the model.
   const best = digitize(candidates[0]);
+  const isWord = /[a-z]{3,}/i.test(best.replace(/sqrt|sin|cos|tan|log|ln|pi|lim/gi, '')); // "hello" is writing, not algebra
+  if (!best.includes('=') && hasVariable(best) && !isWord) {
+    // Algebra without "=" (2x, 3x + 2x, (x+1)^2): shown as written, simplified by the math engine.
+    const expr = normalize(best);
+    return { text: pretty(expr), status: 'compute', compute: `simplify(${expr})`, expression: expr };
+  }
   if (/[a-z]/i.test(best.replace(/sqrt|sin|cos|tan|log|ln|pi/gi, '')) && /[=]/.test(best)) {
     return { text: pretty(normalize(best)), status: 'solve', expression: normalize(best) };
   }

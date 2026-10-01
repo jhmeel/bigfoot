@@ -27,15 +27,19 @@
     if (!status || status.primaryDisplayId !== displayId) { hide(); return; }
     const { ai, voice } = status;
     const voiceText = voice.state === 'ready' ? 'Voice ready' : voice.state === 'loading' ? 'Loading voice…' : voice.state === 'failed' ? 'Voice unavailable' : '';
-    card.dataset.state = ai.state;
-    if (ai.state === 'loading' || (voice.state === 'loading' && ai.state !== 'failed')) {
+    card.dataset.state = ai.state === 'preparing' ? 'loading' : ai.state;
+    const busy = ai.state === 'loading' || ai.state === 'preparing';
+    if (busy || (voice.state === 'loading' && ai.state !== 'failed')) {
       clearTimeout(hideTimer);
       shownLoading = true;
-      const p = ai.state === 'loading' ? ai.percent : 100;
-      text.textContent = ai.state === 'loading' ? `Loading Bigfoot’s AI · ${ai.label}` : 'Loading voice…';
-      pct.textContent = ai.state === 'loading' ? `${p}%` : '';
+      const p = busy ? ai.percent : 100;
+      text.textContent = ai.state === 'preparing' ? 'Getting Bigfoot ready for first use'
+        : ai.state === 'loading' ? `Loading Bigfoot’s AI · ${ai.label}` : 'Loading voice…';
+      pct.textContent = !busy ? '' : ai.state === 'preparing' && !p ? clock(ai.elapsed) : `${p}%`; // no progress reported yet: time instead
       bar.style.width = `${p}%`;
-      sub.textContent = [ai.state === 'loading' && ai.elapsed > 20000 ? `${clock(ai.elapsed)} · a busy PC takes longer` : '', voiceText].filter(Boolean).join(' · ');
+      const note = ai.state === 'preparing' ? `One time only: reading its instructions and tools · ${clock(ai.elapsed)}`
+        : ai.state === 'loading' && ai.elapsed > 20000 ? `${clock(ai.elapsed)} · a busy PC takes longer` : '';
+      sub.textContent = [note, voiceText].filter(Boolean).join(' · ');
       card.classList.add('show');
     } else if (ai.state === 'failed') {
       clearTimeout(hideTimer);

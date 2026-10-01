@@ -103,10 +103,10 @@ class Agent {
   }
 
   /** Have the local model read the fixed part of the conversation before the user asks anything. */
-  async warm() {
-    if (this.running || !this.target) return;
+  async warm(onProgress) {
+    if (this.running || !this.target) return false;
     const provider = this.ensureProvider();
-    if (provider.warm) await provider.warm();
+    return provider.warm ? provider.warm(onProgress) : false;
   }
 
   canFallBackOffline(provider, err) {
