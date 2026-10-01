@@ -96,7 +96,7 @@ module.exports = [
       if (opened && opened.web) {
         return `${opened.name} isn't installed on this PC, so its web version (${opened.url}) was opened in the browser instead. Tell the user, then take a screenshot to continue there.`;
       }
-      return `Opened ${opened}. Take a screenshot to confirm it's ready.`;
+      return `Opened ${opened}. If you need to work in it next, take a screenshot first to see it.`;
     },
   },
   {

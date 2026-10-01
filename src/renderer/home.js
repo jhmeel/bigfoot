@@ -86,6 +86,8 @@
       const row = el('div', 'turn user');
       row.append(el('div', 'msg user', text));
       add(row);
+      // A spoken request shows "thinking" while it's still being transcribed: keep it under the words.
+      if (thinking) { $('log').append(thinking); scrollDown(); }
       return;
     }
     if (kind === 'assistant') { finishAssistant(text); return; }

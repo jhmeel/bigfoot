@@ -236,6 +236,7 @@
     const box = boundsOf(pts);
     if (pts.length < 3 || (box.width < MIN_SIZE && box.height < MIN_SIZE)) {
       showLasso(null);
+      if (window.doubleTapExit(pts, () => false)) showAsk(null); // double-click cancels Point
       return;
     }
     // A nearly straight stroke can't enclose anything, so use the rectangle it spans.

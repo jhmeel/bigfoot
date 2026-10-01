@@ -2,6 +2,38 @@
 // Drives the real agent loop with a scripted model, fake screen, and fake input.
 
 require('./electron-stub');
+const intentTest = require('node:test');
+const intentAssert = require('node:assert/strict');
+
+intentTest('everyday commands run instantly without the model; anything more goes to it', () => {
+  const { matchIntent } = require('../src/main/intents');
+  const url = (t) => { const r = matchIntent(t); return r && r.calls[0].input.url; };
+  intentAssert.equal(url('Hey Bigfoot, open Chrome and search for nearest hospital'), 'https://www.google.com/search?q=nearest+hospital');
+  intentAssert.equal(url('Can you please google best pizza in Lagos?'), 'https://www.google.com/search?q=best+pizza+in+Lagos');
+  intentAssert.equal(url('play calm down by rema'), 'https://www.youtube.com/results?search_query=calm+down+by+rema');
+  intentAssert.equal(url('go to amazon.com'), 'https://amazon.com');
+  intentAssert.deepEqual(matchIntent('open spotify').calls[0], { name: 'open_app', input: { name: 'spotify' } });
+  // The search runs now; the rest is handed to the model, starting from the results page.
+  const split = matchIntent('open chrome and find the nearest restaurant and browse their menu');
+  intentAssert.equal(split.calls[0].input.url, 'https://www.google.com/search?q=the+nearest+restaurant');
+  intentAssert.match(split.followUp, /^browse their menu/);
+  for (const t of ['open notepad and write a poem', 'find my resume file', 'what is the weather', 'hi']) intentAssert.equal(matchIntent(t), null, t);
+});
+
+intentTest('the calculator gives standard scientific results and errors', () => {
+  const { evaluate } = require('../src/main/math');
+  const v = (e, o) => evaluate(e, o).text;
+  intentAssert.equal(v('sin(30)'), '0.5');
+  intentAssert.equal(v('asin(0.5)'), '30');
+  intentAssert.equal(v('sin(pi/6)', { angle: 'rad' }), '0.5');
+  intentAssert.equal(v('−2^2'), '-4');
+  intentAssert.equal(v('2^3^2'), '512');
+  intentAssert.equal(v('3×10^(2)'), '300');
+  intentAssert.equal(v('5!'), '120');
+  for (const [e, msg] of [['tan(90)', /undefined/], ['sqrt(-4)', /real number/], ['log(0)', /greater than 0/], ['1/0', /divide by zero/], ['acos(2)', /between/]]) {
+    intentAssert.throws(() => evaluate(e), msg, e);
+  }
+});
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');

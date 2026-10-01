@@ -15,6 +15,7 @@ const { SPEECH } = require('./catalog');
 // Generous: on a PC short of memory (the AI loading at the same time) Whisper starts slowly.
 const START_TIMEOUT_MS = 180000;
 const TRANSCRIBE_TIMEOUT_MS = 120000;
+const SPEECH_HINT = 'Hey Bigfoot, open Chrome and search for the nearest restaurant. Open Spotify and play music on YouTube. Draw a circle on the screen. Open Notepad, WhatsApp, Word, Excel, File Explorer.';
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -110,6 +111,9 @@ class SpeechService extends EventEmitter {
     form.append('file', new Blob([wav], { type: 'audio/wav' }), 'speech.wav');
     form.append('response_format', 'json');
     form.append('temperature', '0');
+    // Context for the recognizer: the words people say to Bigfoot ("big food", "such for" were heard
+    // instead of "Bigfoot", "search for"). Whisper uses it as the text that came before.
+    form.append('prompt', SPEECH_HINT);
     const res = await fetch(`${base}/inference`, { method: 'POST', body: form, signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS) });
     if (!res.ok) throw new Error(`speech recognizer returned ${res.status}`);
     return cleanTranscript((await res.json()).text);

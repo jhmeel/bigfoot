@@ -88,10 +88,20 @@
       <span class="math-title"><svg viewBox="0 0 20 20"><path d="M3.5 6h5M6 3.5v5M11.5 6h5M3.8 12.3l4.4 4.4M8.2 12.3l-4.4 4.4M11.5 13h5M11.5 16h5"/></svg>Write math, then press Solve</span>
       <span class="ink-sep"></span>
       <button id="math-solve-all" class="solve-all" title="Solve everything on the screen (Enter)">Solve all</button>
+      <button id="math-calc-toggle" title="Calculator: type it instead" aria-pressed="false"><svg viewBox="0 0 20 20"><rect x="4" y="2.5" width="12" height="15" rx="2"/><path d="M6.5 5.5h7v3h-7zM7 11.5h.01M10 11.5h.01M13 11.5h.01M7 14.5h.01M10 14.5h.01M13 14.5h.01"/></svg></button>
       <button id="math-undo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 20 20"><path d="M7.5 5L4 8.5 7.5 12"/><path d="M4.5 8.5h7a4.5 4.5 0 0 1 0 9H9"/></svg></button>
       <button id="math-clear" title="Clear all (Delete)"><svg viewBox="0 0 20 20"><path d="M4 6h12M8 6V4h4v2M5.5 6l.7 10c.1.8.7 1.4 1.5 1.4h4.6c.8 0 1.4-.6 1.5-1.4l.7-10"/></svg></button>
       <button id="math-done" class="close" title="Close (Esc)"><svg viewBox="0 0 20 20"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></svg></button>
     </div>
+  </div>
+
+  <div class="calc" id="calc" hidden role="dialog" aria-label="Calculator">
+    <div class="calc-head" id="calc-head" title="Drag to move"><span>Calculator</span><span class="calc-mode">deg</span><button class="calc-x" id="calc-close" aria-label="Close" title="Close">×</button></div>
+    <div class="calc-history" id="calc-history"></div>
+    <input class="calc-input" id="calc-input" type="text" spellcheck="false" autocomplete="off" placeholder="Type or tap, e.g. sin(30)+2^3, 2x+1=7">
+    <div class="calc-out"><div class="calc-result" id="calc-result" aria-live="polite"></div><button class="calc-copy" id="calc-copy" title="Copy the answer and working">Copy</button></div>
+    <ol class="calc-working" id="calc-working"></ol>
+    <div class="calc-keys" id="calc-keys"></div>
   </div>
 
   <div id="banner" role="alert">
@@ -111,6 +121,7 @@
 
   <script src="overlay.js"></script>
   <script src="overlay-loader.js"></script>
+  <script src="overlay-calc.js"></script>
   <script src="overlay-draw.js"></script>
   <script src="overlay-math.js"></script>
   <script src="overlay-ink.js"></script>

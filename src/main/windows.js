@@ -81,6 +81,15 @@ class WindowManager {
     }
   }
 
+  /** Put the overlays back on top of everything, so a drag over the screen lands on them. */
+  raiseOverlays() {
+    for (const w of this.overlays.values()) {
+      if (w.isDestroyed()) continue;
+      w.setAlwaysOnTop(true, 'screen-saver');
+      w.moveTop();
+    }
+  }
+
   setOverlaysInteractive(on, displayId = null) {
     for (const [id, w] of this.overlays) {
       if (!w.isDestroyed() && (displayId == null || id === displayId)) w.setIgnoreMouseEvents(!on);
@@ -222,6 +231,12 @@ class WindowManager {
   openTerminal() { this.openMain('terminal'); }
 
   /** Get out of the way while Bigfoot works on the screen. */
+  /** The chat is open and in view: replies show there, not also next to the cursor. */
+  chatInView() {
+    const w = this.panel;
+    return Boolean(w && !w.isDestroyed() && w.isVisible() && !w.isMinimized());
+  }
+
   hidePanel() {
     if (this.main && !this.main.isDestroyed() && this.main.isVisible() && !this.main.isMinimized()) this.main.minimize();
   }

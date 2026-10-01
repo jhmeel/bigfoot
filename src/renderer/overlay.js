@@ -1,4 +1,27 @@
 'use strict';
+
+/**
+ * Double-tap on empty screen closes the open tool (shared by Draw and Math). Two taps that barely
+ * move, close in time and place, and away from any ink; a dotted "i" or "÷" is next to ink, so it
+ * never counts. Returns true when it was an exit, so the caller drops the two taps.
+ */
+window.doubleTapExit = (() => {
+  let lastTap = null;
+  return (stroke, nearInk) => {
+    const pts = stroke || [];
+    if (!pts.length) return false;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+    const tap = x1 - x0 < 6 && y1 - y0 < 6 ? { x: (x0 + x1) / 2, y: (y0 + y1) / 2, at: Date.now() } : null;
+    const prev = lastTap;
+    lastTap = tap;
+    if (!tap || !prev || tap.at - prev.at > 450 || Math.hypot(tap.x - prev.x, tap.y - prev.y) > 14) return false;
+    if (nearInk(tap, 48)) return false;
+    lastTap = null;
+    window.buddy.invoke('tool:exit');
+    return true;
+  };
+})();
 // The buddy: the Bigfoot paw, springing after the cursor. It becomes a waveform while listening
 // and a spinner while thinking, and flies in an arc to point at things.
 

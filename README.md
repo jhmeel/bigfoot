@@ -133,6 +133,19 @@ only *reads* it and the engine still does the math, so answers are never guessed
 systems, calculus, and vectors the **working** is shown step by step under the answer. Numbers
 written with gaps ("0", then "100", then "×" between them) join into one expression.
 
+**Calculator** (calculator button on the Math bar): a standard scientific calculator you can drag
+anywhere: DEG/RAD, 2nd for inverse functions (sin⁻¹, x³, ∛, 10ˣ, eˣ), x², xʸ, √, log, ln, n!, π, e,
+Ans, ×10ˣ, plus x, y, the equation sign, d/dx and ∫ for algebra and calculus, with the working shown.
+Results and errors match a standard calculator (tan 90° is undefined, −2² = −4). Each solved
+expression on screen has **Share**, which copies the problem, answer, and working to paste anywhere.
+Answers sit below what you wrote and always stay on the screen.
+
+**Instant commands:** "search for …", "open Chrome and search for …", "play … on YouTube", "go to
+amazon.com", "open Spotify" run immediately without waiting for the AI. If you add a next step
+("… and browse their menu"), the search opens at once and the AI continues from the results.
+
+**Closing a tool:** Esc, the tool's ✕, or double-click an empty part of the screen.
+
 **Point** (or Ctrl + Alt and drag): circle part of the screen and a small box appears right beside
 it. Type your question and press Enter, or just speak if Talk is on. The Bigfoot window stays where
 it is, and the mark fades once the question is taken. The area you marked appears as a picture with

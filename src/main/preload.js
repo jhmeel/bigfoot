@@ -11,7 +11,7 @@ const INVOKE = new Set([
   'onboarding:finish', 'window:close', 'window:minimize', 'panel:resize', 'approval:answer',
   'terminal:open', 'terminal:get', 'terminal:clear', 'terminal:reveal',
   'local:hardware', 'local:status', 'local:start', 'local:pause', 'local:resume', 'local:cancel',
-  'toolbar:pick', 'math:read', 'math:ink', 'math:system', 'ink:stop', 'ink:share', 'ink:reveal', 'loader:status', 'loader:retry',
+  'toolbar:pick', 'math:read', 'math:ink', 'math:system', 'math:calc', 'math:share', 'ink:stop', 'tool:exit', 'ink:share', 'ink:reveal', 'loader:status', 'loader:retry',
   'plugins:list', 'plugins:pick', 'plugins:install', 'plugins:remove',
 ]);
 const SEND = new Set([
