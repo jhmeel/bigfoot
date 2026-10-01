@@ -1,15 +1,40 @@
 'use strict';
 // Exact arithmetic for the math tool (recursive descent, no eval).
 
-const FUNCS = {
-  sqrt: Math.sqrt, cbrt: Math.cbrt, abs: Math.abs, ln: Math.log, log: Math.log10, exp: Math.exp,
-  sin: (d) => roundTrig(Math.sin(rad(d))), cos: (d) => roundTrig(Math.cos(rad(d))), tan: (d) => roundTrig(Math.tan(rad(d))),
-};
-const CONSTS = { pi: Math.PI, e: Math.E };
-const rad = (d) => (d * Math.PI) / 180;
-const roundTrig = (v) => (Math.abs(v) < 1e-12 ? 0 : Math.abs(v - Math.round(v)) < 1e-12 ? Math.round(v) : v);
-
 class MathError extends Error {}
+
+// Angles are in degrees unless the calculator is switched to radians (set per evaluation).
+let angleMode = 'deg';
+const toRad = (x) => (angleMode === 'deg' ? (x * Math.PI) / 180 : x);
+const fromRad = (x) => (angleMode === 'deg' ? (x * 180) / Math.PI : x);
+const roundTrig = (v) => (Math.abs(v) < 1e-12 ? 0 : Math.abs(v - Math.round(v)) < 1e-12 ? Math.round(v) : v);
+const need = (ok, message) => { if (!ok) throw new MathError(message); };
+
+// Same results and the same errors as a standard scientific calculator.
+const FUNCS = {
+  sqrt: (x) => { need(x >= 0, 'The square root of a negative number isn’t a real number'); return Math.sqrt(x); },
+  cbrt: Math.cbrt,
+  abs: Math.abs,
+  exp: Math.exp,
+  ln: (x) => { need(x > 0, 'ln needs a number greater than 0'); return Math.log(x); },
+  log: (x) => { need(x > 0, 'log needs a number greater than 0'); return Math.log10(x); },
+  sin: (x) => roundTrig(Math.sin(toRad(x))),
+  cos: (x) => roundTrig(Math.cos(toRad(x))),
+  tan: (x) => {
+    need(Math.abs(Math.cos(toRad(x))) > 1e-12, `tan is undefined at ${angleMode === 'deg' ? `${x}°` : x}`);
+    return roundTrig(Math.tan(toRad(x)));
+  },
+  asin: (x) => { need(x >= -1 && x <= 1, 'sin⁻¹ needs a value between −1 and 1'); return roundTrig(fromRad(Math.asin(x))); },
+  acos: (x) => { need(x >= -1 && x <= 1, 'cos⁻¹ needs a value between −1 and 1'); return roundTrig(fromRad(Math.acos(x))); },
+  atan: (x) => roundTrig(fromRad(Math.atan(x))),
+  sinh: Math.sinh,
+  cosh: Math.cosh,
+  tanh: Math.tanh,
+};
+FUNCS.arcsin = FUNCS.asin;
+FUNCS.arccos = FUNCS.acos;
+FUNCS.arctan = FUNCS.atan;
+const CONSTS = { pi: Math.PI, e: Math.E };
 
 function normalize(text) {
   let s = String(text || '')
@@ -69,7 +94,7 @@ function parse(src, vars = {}) {
       if (isOp('*')) { i++; v *= unary(); } else if (isOp('/')) {
         i++;
         const d = unary();
-        if (d === 0) throw new MathError('Division by zero');
+        if (d === 0) throw new MathError('You can’t divide by zero');
         v /= d;
       } else if (startsPrimary()) v *= power(); // implicit: 2(3+4), 2pi, 3 sqrt 4
       else return v;
@@ -116,6 +141,7 @@ function parse(src, vars = {}) {
   if (!tokens.length) throw new MathError('Nothing to calculate');
   const v = expr();
   if (i < tokens.length) throw new MathError(`Unexpected "${tokens[i].v}"`);
+  if (Number.isNaN(v)) throw new MathError('That isn’t a real number');
   if (!Number.isFinite(v)) throw new MathError('The result is too large');
   return v;
 }
@@ -128,14 +154,20 @@ function format(v) {
   return String(Number(v.toPrecision(12)));
 }
 
-function evaluate(text) {
+/** @param {{ angle?: 'deg'|'rad' }} [options] trig in degrees (default) or radians */
+function evaluate(text, { angle = 'deg' } = {}) {
   const expression = normalize(text);
   if (expression.includes('=')) throw new MathError('That’s an equation');
   if (tokenize(expression).some((t) => t.t === 'id' && !(t.v in FUNCS) && !(t.v in CONSTS))) {
     throw new MathError('That has a variable in it');
   }
-  const value = parse(expression);
-  return { expression, value, text: format(value) };
+  angleMode = angle === 'rad' ? 'rad' : 'deg';
+  try {
+    const value = parse(expression);
+    return { expression, value, text: format(value) };
+  } finally {
+    angleMode = 'deg';
+  }
 }
 
 const unknowns = (expression) => [...new Set(tokenize(expression.replace(/=/g, '+'))

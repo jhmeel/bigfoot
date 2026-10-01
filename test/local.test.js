@@ -358,7 +358,7 @@ test('handwritten arithmetic is evaluated exactly', () => {
     '1,000 * 3': '3000', '\\frac{1}{4}+\\frac{1}{4}': '0.5', '12 − 5 =': '7', '|3-10|': '7', '(2+3)*(4-1)^2': '45',
   };
   for (const [input, want] of Object.entries(cases)) assert.equal(evaluate(input).text, want, input);
-  assert.throws(() => evaluate('7 / 0'), /Division by zero/);
+  assert.throws(() => evaluate('7 / 0'), /divide by zero/);
   assert.throws(() => evaluate('3x + 2'), /variable/);
   assert.throws(() => evaluate('3x + 2 = 8'), /equation/);
   assert.throws(() => evaluate('process.exit()'));

@@ -1,7 +1,7 @@
 {
   "name": "bigfoot",
   "productName": "Bigfoot",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "An AI assistant that lives next to your cursor, sees your screen, talks, and operates your computer.",
   "main": "src/main/main.js",
   "author": "Bigfoot",

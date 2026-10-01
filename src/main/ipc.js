@@ -83,7 +83,14 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
   handle('math:read', (png) => controller.readMath(png));
   handle('math:ink', (strokes) => controller.readMathInk(strokes));
   handle('math:system', (expressions) => controller.solveMathSystem(expressions));
+  handle('math:calc', (text, angle) => controller.calculate(text, angle === 'rad' ? 'rad' : 'deg'));
+  handle('math:share', (text) => {
+    if (typeof text !== 'string' || !text.trim()) return { ok: false };
+    require('electron').clipboard.writeText(text.slice(0, 20000));
+    return { ok: true };
+  });
   handle('ink:stop', () => { controller.stopInk(); return true; });
+  handle('tool:exit', () => { controller.exitTool(); return true; });
   handle('ink:share', (kind, event) => controller.shareDrawing(windows.displayIdOf(event.sender), ['copy', 'png', 'svg'].includes(kind) ? kind : 'copy'));
   handle('ink:reveal', (file) => { controller.revealFile(file); return true; });
   ipcMain.on('ink:reply', (_e, msg) => controller.onInkReply(msg || {}));

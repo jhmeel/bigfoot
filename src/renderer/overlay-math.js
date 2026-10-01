@@ -96,25 +96,44 @@
   }
 
   // ---------------------------------------------------------------- answers and live reading
+  /**
+   * Everything about one expression sits in a card just below it: what was read (with Solve and
+   * Share), the answer, then the working. The card stays inside the screen: shifted left near the
+   * right edge, moved above the writing near the bottom.
+   */
   function place(grp) {
-    if (!grp.el) {
+    if (!grp.card) {
+      grp.card = document.createElement('div');
+      grp.card.className = 'math-card';
       grp.el = document.createElement('div');
       grp.el.className = 'math-answer';
       grp.reading = document.createElement('div');
       grp.reading.className = 'math-reading';
       grp.working = document.createElement('ol');
       grp.working.className = 'math-working';
-      answers.append(grp.el, grp.reading, grp.working);
+      grp.card.append(grp.reading, grp.el, grp.working);
+      answers.append(grp.card);
     }
     const b = grp.box;
-    const h = Math.max(28, Math.min(64, (b.y1 - b.y0) * 0.8));
-    grp.el.style.left = `${b.x1 + 18}px`;
-    grp.el.style.top = `${(b.y0 + b.y1) / 2}px`;
-    grp.el.style.fontSize = `${h}px`;
-    grp.reading.style.left = `${b.x0}px`;
-    grp.reading.style.top = `${b.y1 + 10}px`;
-    grp.working.style.left = `${b.x0}px`;
-    grp.working.style.top = `${b.y1 + 52}px`;
+    grp.el.style.fontSize = `${Math.max(22, Math.min(40, (b.y1 - b.y0) * 0.6))}px`;
+    grp.card.style.left = `${b.x0}px`;
+    grp.card.style.top = `${b.y1 + 10}px`;
+    requestAnimationFrame(() => keepOnScreen(grp));
+  }
+
+  function keepOnScreen(grp) {
+    if (!grp.card) return;
+    const b = grp.box;
+    // Measure at its natural width: placed near the right edge it would already be squeezed.
+    grp.card.style.left = '0px';
+    const r = grp.card.getBoundingClientRect();
+    const margin = 12;
+    let left = b.x0;
+    let top = b.y1 + 10;
+    if (left + r.width > innerWidth - margin) left = Math.max(margin, innerWidth - margin - r.width);
+    if (top + r.height > innerHeight - margin) top = Math.max(margin, b.y0 - 10 - r.height); // not enough room below
+    grp.card.style.left = `${left}px`;
+    grp.card.style.top = `${top}px`;
   }
 
   /** The working for heavy maths (equations, systems, calculus, vectors), step by step under it. */
@@ -128,6 +147,8 @@
       grp.working.append(li);
     }
     grp.working.classList.toggle('show', list.length > 1);
+    grp.steps = list;
+    requestAnimationFrame(() => keepOnScreen(grp));
   }
 
   function showAnswer(grp, { state, text = '', title = '' }) {
@@ -137,28 +158,49 @@
     el.title = title;
     el.textContent = state === 'thinking' ? '' : text;
     el.classList.toggle('show', Boolean(text) || state === 'thinking');
+    grp.answer = state === 'done' || state === 'right' || state === 'wrong' ? (state === 'right' ? `${grp.readingText} ✓` : text) : '';
+    if (grp.shareBtn) grp.shareBtn.hidden = !grp.answer;
+    requestAnimationFrame(() => keepOnScreen(grp));
   }
 
-  /** What the recognizer read, typeset under the handwriting with its Solve button. */
+  const button = (cls, label, onClick) => {
+    const b = document.createElement('button');
+    b.className = cls;
+    b.textContent = label;
+    b.addEventListener('pointerdown', (e) => e.stopPropagation()); // not the start of a stroke
+    b.addEventListener('click', (e) => { e.stopPropagation(); onClick(b); });
+    return b;
+  };
+
+  /** The problem, its answer, and the working, as text to paste anywhere. */
+  async function share(grp, btn) {
+    const lines = [grp.readingText, grp.answer && !grp.answer.endsWith('✓') ? `Answer: ${grp.answer}` : grp.answer];
+    if (grp.steps && grp.steps.length > 1) lines.push('', 'Working:', ...grp.steps.map((s, i) => `${i + 1}. ${s}`));
+    const res = await api.invoke('math:share', lines.filter((l) => l != null).join('\n')).catch(() => null);
+    btn.textContent = res && res.ok ? 'Copied' : 'Couldn’t copy';
+    setTimeout(() => { btn.textContent = 'Share'; }, 1800);
+  }
+
+  /** What the recognizer read, typeset under the handwriting with its Solve and Share buttons. */
   function showReading(grp, text) {
     place(grp);
     grp.reading.textContent = '';
+    grp.readingText = text;
     if (text) {
       const label = document.createElement('span');
       label.textContent = text;
-      const solveBtn = document.createElement('button');
-      solveBtn.className = 'math-solve';
-      solveBtn.textContent = 'Solve';
-      solveBtn.addEventListener('pointerdown', (e) => e.stopPropagation()); // not the start of a stroke
-      solveBtn.addEventListener('click', (e) => { e.stopPropagation(); solve(grp); });
-      grp.reading.append(label, solveBtn);
+      grp.shareBtn = button('math-share', 'Share', (b) => share(grp, b));
+      grp.shareBtn.title = 'Copy the problem, answer, and working to paste anywhere';
+      grp.shareBtn.hidden = !grp.answer;
+      grp.reading.append(label, button('math-solve', 'Solve', () => solve(grp)), grp.shareBtn);
     }
     grp.reading.classList.toggle('show', Boolean(text));
+    requestAnimationFrame(() => keepOnScreen(grp));
   }
 
   function removeGroup(grp) {
     clearTimeout(grp.timer);
-    if (grp.el) { grp.el.remove(); grp.reading.remove(); grp.working.remove(); }
+    if (grp.card) grp.card.remove();
     groups = groups.filter((x) => x !== grp);
   }
 
@@ -276,6 +318,18 @@
     if (!drawing) return;
     const { group, points } = drawing;
     drawing = null;
+    // Double-tap on empty screen closes Math (a dot next to writing, as in ÷ or i, never does).
+    const isTap = (s) => s.every((p) => Math.hypot(p.x - s[0].x, p.y - s[0].y) < 6);
+    const nearInk = (p, r) => groups.some((g) => g.strokes.some((s) => !isTap(s) && s.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < r)));
+    if (window.doubleTapExit(points, nearInk)) {
+      for (const g of [...groups]) {
+        g.strokes = g.strokes.filter((s) => !(isTap(s) && Math.hypot(s[0].x - points[0].x, s[0].y - points[0].y) < 20));
+        if (!g.strokes.length) removeGroup(g);
+        else g.box = boxOf(g.strokes);
+      }
+      redraw();
+      return;
+    }
     group.strokes.push(points);
     group.box = boxOf(group.strokes);
     joinNeighbours(group);

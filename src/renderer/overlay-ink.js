@@ -401,6 +401,20 @@
     else if (prefs.tidy) s = tidied(s) || s;
     redrawLive();
     const pts = s.points;
+    // Double-tap on empty screen closes Draw: drop the dot the first tap left.
+    const prev = strokes[strokes.length - 1];
+    const tiny = (st) => st && !TOOLS[st.tool].shape && st.points.every((p) => Math.hypot(p.x - st.points[0].x, p.y - st.points[0].y) < 6);
+    const prevIsTap = tiny(prev);
+    if (window.doubleTapExit(pts, (p, r) => strokes.some((st) => !(prevIsTap && st === prev) && hits(st, p, r)))) {
+      if (prevIsTap) {
+        strokes.pop();
+        const u = undoStack[undoStack.length - 1];
+        if (u && u.type === 'add' && u.stroke === prev) undoStack.pop();
+        redrawBase();
+        renderBar();
+      }
+      return;
+    }
     if (TOOLS[s.tool].shape && (pts.length < 2 || Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y) < 3)) return;
     strokes.push(s);
     redrawBase();

@@ -9,8 +9,9 @@ const { ScreenTarget } = require('./capture');
 const { AgentError, toUserError } = require('./agent');
 const { resolveProvider } = require('./llm');
 const { readInk, interpretInk, splitScripts, pretty } = require('./mathink');
-const { solveSystem } = require('./math');
+const { solveSystem, evaluate, solveEquation } = require('./math');
 const cas = require('./cas');
+const { matchIntent } = require('./intents');
 const voice = require('./voice');
 
 const PTT_DELAY_MS = 150;      // ignore quick Ctrl+Alt shortcuts; only a hold starts listening
@@ -62,7 +63,6 @@ class Controller {
     this.windows.send(this.windows.toolTray, 'voice-mode', on);
     if (on) {
       this.activity.add('info', 'Talk is on: listening until you turn it off.');
-      this.bubble('i’m listening. say “stop listening” or press esc when you’re done', 4000);
       if (this.state === 'responding') this.finishReply();
       this.continueVoice();
     } else {
@@ -228,6 +228,13 @@ class Controller {
     }
   }
 
+  /** Double-clicking empty screen while a tray tool is open closes it, like Esc. */
+  exitTool() {
+    if (this.regionAsking != null || this.pendingRegion) this.clearRegion();
+    if (this.selecting === 'panel') this.setSelecting(null);
+    if (this.ink) this.stopInk();
+  }
+
   onEsc() {
     if (this.agent.running) { this.stopTask(); return; }
     if (this.regionAsking != null) { this.clearRegion(); return; }
@@ -239,6 +246,26 @@ class Controller {
     if (this.state === 'responding') this.finishReply();
   }
 
+  /**
+   * The microphone couldn't start: say why in plain words and open the Windows page that fixes it,
+   * instead of just failing. Blocked for apps → Microphone privacy; missing, off, or busy → Sound.
+   */
+  microphoneHelp(err) {
+    const msg = String((err && err.message) || err);
+    const blocked = /denied|permission|notallowed|not allowed/i.test(msg);
+    const missing = /notfound|not found|no (?:audio|input|microphone)|requested device/i.test(msg);
+    const page = blocked ? 'ms-settings:privacy-microphone' : 'ms-settings:sound';
+    const text = blocked
+      ? 'Your microphone is blocked for apps. Turn on “Microphone access” and “Let desktop apps access your microphone”, then tap Talk again. Opening the settings for you…'
+      : missing
+        ? 'No microphone was found. Plug one in or turn it on under Input, then tap Talk again. Opening Sound settings for you…'
+        : 'Your microphone is off or another app is using it. Check it under Input, then tap Talk again. Opening Sound settings for you…';
+    this.logger.error('Microphone unavailable', msg);
+    this.activity.add('error', `Microphone unavailable (${msg}).`);
+    this.showInfo('Turn on your microphone', text);
+    setTimeout(() => shell.openExternal(page).catch(() => {}), 1200);
+  }
+
   async startListening(source) {
     if (this.state === 'responding') this.finishReply();
     if (this.state !== 'idle') return;
@@ -247,9 +274,7 @@ class Controller {
       await this.audio.startRecording({ vad: source !== 'ptt', patient: source === 'voice' });
     } catch (err) {
       if (source === 'voice') { this.voiceMode = false; this.windows.voiceMode = false; this.windows.broadcast('voice-mode', false); }
-      this.showError(Object.assign(new Error(/denied|permission|notallowed/i.test(err.message)
-        ? 'Allow microphone access in Windows Settings › Privacy & security › Microphone, then try again.'
-        : `The microphone couldn’t start: ${err.message}`), { title: 'Microphone unavailable' }));
+      this.microphoneHelp(err);
       return;
     }
     this.listenSource = source;
@@ -352,13 +377,17 @@ class Controller {
     if (this.agent.running) { this.showInfo('Still working', 'Press Esc to stop the current task first.'); return false; }
     this.windows.hidePanel();
     this.clearRegion();
+    this.windows.raiseOverlays(); // other always-on-top windows (a browser, the tray) may have moved above it
     this.setSelecting('panel');
-    this.showInfo('Select an area', 'Drag over the part of the screen you want to ask about. Press Esc to cancel.');
+    this.activity.add('info', 'Point: drag around what you want to ask about (Esc cancels).');
     return true;
   }
 
   onRegionSelected(displayId, rect) {
-    if (displayId == null || !rect || rect.width < 6 || rect.height < 6) return;
+    if (displayId == null || !rect || rect.width < 6 || rect.height < 6) {
+      this.activity.add('info', `Point: that drag was too small to mark an area${rect ? ` (${Math.round(rect.width)}×${Math.round(rect.height)})` : ''}.`);
+      return;
+    }
     const points = Array.isArray(rect.points)
       ? rect.points.slice(0, 400).filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y))
       : null;
@@ -601,6 +630,34 @@ class Controller {
     }
   }
 
+  /**
+   * The typed calculator: sums exactly, equations by the solver, and anything else (sin, log,
+   * d/dx, ∫, vectors, simplifying) by the symbolic engine. Never the AI model.
+   */
+  async calculate(text, angle = 'deg') {
+    const expr = String(text || '').trim().slice(0, 400);
+    if (!expr) return { ok: false, message: 'Type something to calculate' };
+    let plainError = null;
+    try { const r = evaluate(expr, { angle }); return { ok: true, answer: r.text }; } catch (err) {
+      // A plain sum that's mathematically invalid (1/0, √−4, tan 90°) gets that exact message, like a calculator.
+      if (!/variable|equation|Unknown name|Unexpected/i.test(err.message)) plainError = err.message;
+    }
+    if (plainError) return { ok: false, message: plainError };
+    if (expr.includes('=')) {
+      try { const r = solveEquation(expr); return { ok: true, answer: r.text, steps: r.steps }; } catch { /* next */ }
+    }
+    const form = cas.fromHandwriting(expr) || (expr.includes('=') ? null : expr);
+    if (form) {
+      try {
+        const r = await cas.compute(form);
+        return { ok: true, answer: r.decimal ? `${r.answer} ≈ ${r.decimal}` : r.answer, steps: await cas.working(form) };
+      } catch (err) {
+        return { ok: false, message: err.message };
+      }
+    }
+    return { ok: false, message: 'I couldn’t work that out' };
+  }
+
   /** Linear equations on several lines, solved together (x + y = 5 and x − y = 1). */
   solveMathSystem(expressions) {
     try {
@@ -671,10 +728,22 @@ class Controller {
     this.logger.audit('task', { source, chars: text.length, region: Boolean(region) });
     this.setState('processing');
     const local = this.provider() === 'local';
-    this.bubble(local && this.runtime.preparing ? `getting ready for first use (${this.runtime.preparing.percent}%). your answer comes right after…`
+    // Everyday commands ("search for …", "open Spotify") run at once, without the model.
+    const intent = !region && !drawing ? matchIntent(text) : null;
+    this.bubble(intent ? '' : local && this.runtime.preparing ? `getting ready for first use (${this.runtime.preparing.percent}%). your answer comes right after…`
       : local && !this.runtime.running ? 'one moment, my AI is still loading…' : '');
     try {
-      const result = await this.agent.run(text, { region: sentRegion, drawing });
+      if (intent) {
+        this.setState('acting');
+        await this.agent.runDirect(intent.calls);
+        if (!intent.followUp) {
+          await this.presentReply(intent.reply, null, display.id);
+          return { ok: true };
+        }
+        this.panelLog('progress', intent.reply);
+        this.setState('processing');
+      }
+      const result = await this.agent.run(intent ? intent.followUp : text, { region: sentRegion, drawing });
       this.sendUsage();
       if (result.status === 'stopped') {
         this.audio.stopSpeaking();
@@ -702,7 +771,8 @@ class Controller {
     this.streamed = clean;
     this.audio.feedStream(clean); // speak each sentence as soon as it's complete
     this.windows.send(this.windows.panel, 'log-live', { text: clean });
-    this.windows.broadcast('bubble-live', { text: clean, displayId: this.agent.target ? this.agent.target.display.id : null });
+    // In the chat already: don't write it out a second time next to the cursor.
+    if (!this.windows.chatInView()) this.windows.broadcast('bubble-live', { text: clean, displayId: this.agent.target ? this.agent.target.display.id : null });
   }
 
   /** The area the user marked, as a picture with their question in the chat. */
@@ -762,7 +832,8 @@ class Controller {
     this.audio.sound('done');
     if (point) this.windows.send(this.windows.overlayFor(point.displayId), 'fly', { ...point, hold: true });
     // Already on screen from streaming: finish it in place rather than typing it out again.
-    if (this.streamed && reply.startsWith(this.streamed.slice(0, 40))) this.windows.broadcast('bubble-live', { text: reply, displayId });
+    if (this.windows.chatInView()) this.windows.broadcast('bubble-live', { text: '' }); // the chat shows it
+    else if (this.streamed && reply.startsWith(this.streamed.slice(0, 40))) this.windows.broadcast('bubble-live', { text: reply, displayId });
     else this.windows.broadcast('bubble', { text: reply, ttl: 0, displayId });
     this.streamed = '';
 

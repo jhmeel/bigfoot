@@ -39,7 +39,7 @@
       bar.style.width = `${p}%`;
       const note = ai.state === 'preparing' ? `One time only: reading its instructions and tools · ${clock(ai.elapsed)}`
         : ai.state === 'loading' && ai.elapsed > 20000 ? `${clock(ai.elapsed)} · a busy PC takes longer` : '';
-      sub.textContent = [note, voiceText].filter(Boolean).join(' · ');
+      sub.textContent = [note, busy ? voiceText : ''].filter(Boolean).join(' · '); // the title already says it when only voice is loading
       card.classList.add('show');
     } else if (ai.state === 'failed') {
       clearTimeout(hideTimer);

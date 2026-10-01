@@ -114,6 +114,30 @@ class Agent {
       && llm.resolveProvider(this.settings, { online: false }) === 'local';
   }
 
+  /**
+   * Run tool calls the user asked for directly (a recognised everyday command), without the model.
+   * Same tools, logging, and stop button as the model's own calls. Resolves to the tool results.
+   */
+  async runDirect(calls) {
+    if (this.running) throw new AgentError('I’m already working on something. Press Esc to stop it first.', 'Still working');
+    this.running = true;
+    this.abort = new AbortController();
+    const results = [];
+    try {
+      for (const call of calls) {
+        if (this.abort.signal.aborted) break;
+        this.hooks.action(call.name, call.input);
+        const content = await this.plugins.run(call.name, call.input, this.pluginContext(this.abort.signal));
+        if (typeof content === 'string') this.hooks.terminal('result', content);
+        results.push(content);
+      }
+      return results;
+    } finally {
+      this.running = false;
+      this.abort = null;
+    }
+  }
+
   /** Run one request from the user. Resolves to { status, text, point }. */
   async run(task, { region = null, drawing = false } = {}) {
     if (drawing) task = `${task}\n\n(I drew on the screen; my drawing shows in your screenshots. Use edit_drawing to correct or improve it if I ask.)`;

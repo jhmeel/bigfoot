@@ -1,0 +1,78 @@
+'use strict';
+// Everyday commands done straight away, without the AI model: "search for …", "open Chrome and
+// search …", "play … on YouTube", "go to amazon.com", "open Spotify". On a laptop without a
+// graphics card each look at the screen costs the model a minute or more; these need none, and
+// they use the same tools the model would. Anything not clearly one of these goes to the model.
+
+const SITES = {
+  youtube: 'https://www.youtube.com', gmail: 'https://mail.google.com', 'google maps': 'https://maps.google.com',
+  maps: 'https://maps.google.com', google: 'https://www.google.com', facebook: 'https://www.facebook.com',
+  instagram: 'https://www.instagram.com', twitter: 'https://x.com', x: 'https://x.com', linkedin: 'https://www.linkedin.com',
+  netflix: 'https://www.netflix.com', amazon: 'https://www.amazon.com', wikipedia: 'https://www.wikipedia.org',
+  reddit: 'https://www.reddit.com', 'chat gpt': 'https://chatgpt.com', chatgpt: 'https://chatgpt.com',
+  'google drive': 'https://drive.google.com', 'google docs': 'https://docs.google.com',
+};
+const BROWSERS = '(?:google chrome|chrome|microsoft edge|edge|firefox|the browser|my browser|a browser|browser|google)';
+const enc = (q) => encodeURIComponent(q.trim()).replace(/%20/g, '+');
+
+/** Strip the polite and addressing parts: "Hey Bigfoot, can you please …" → "…". */
+function core(text) {
+  return String(text || '').trim()
+    .replace(/^(?:hey|hi|ok(?:ay)?)?\s*,?\s*(?:big\s?foot|bigfoot)\s*[,.!]?\s*/i, '')
+    .replace(/^(?:can|could|would|will) you\s+(?:please\s+)?/i, '')
+    .replace(/^(?:please|kindly|i want you to|i need you to|help me(?: to)?|go ahead and)\s+/i, '')
+    .replace(/[.!?]+$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const NEXT_STEP = /\s*(?:,\s*)?(?:and then|and|then)\s+(?=(?:browse|open|click|show|tell|read|check|look|go|see|book|order|compare|select|choose|pick|get|list|summari[sz]e|call|reserve|scroll|view)\b)/i;
+function splitFollowUp(s) {
+  const m = NEXT_STEP.exec(s);
+  return m ? [s.slice(0, m.index).trim(), s.slice(m.index + m[0].length).trim()] : [s.trim(), null];
+}
+
+/** @returns {{ calls: {name: string, input: object}[], reply: string, followUp?: string|null } | null} */
+function matchIntent(text) {
+  const t = core(text);
+  if (!t || t.length > 160) return null;
+  let m;
+
+  // play … on youtube / search youtube for …
+  m = /^(?:open youtube and )?(?:play|watch|search youtube for|search on youtube for|find on youtube) (.+?)(?: on youtube| in youtube)?$/i.exec(t);
+  if (m && (/youtube/i.test(t) || /^(?:play|watch) /i.test(t)) && !/spotify|music app/i.test(t)) {
+    return { calls: [{ name: 'open_url', input: { url: `https://www.youtube.com/results?search_query=${enc(m[1])}` } }], reply: `Searching YouTube for ${m[1]}.` };
+  }
+
+  // [open chrome and] search [google] for … / google … / look up …
+  m = new RegExp(`^(?:(?:open|launch|start|use) ${BROWSERS}\\s*(?:,|and|then|and then)?\\s*)?(?:search(?: google| the web| online)?(?: for)?|google|look up|find me|find) (.+)$`, 'i').exec(t);
+  if (m && !/\b(?:file|folder|document|on (?:my|this) (?:pc|computer|laptop))\b/i.test(m[1])) {
+    // "… and browse their menu": search now, then the model carries on from the results page.
+    const [query, rest] = splitFollowUp(m[1]);
+    return {
+      calls: [{ name: 'open_url', input: { url: `https://www.google.com/search?q=${enc(query)}` } }],
+      reply: `Searching Google for ${query}.`,
+      followUp: rest ? `${rest} (A Google search for "${query}" is already open in the browser: continue from those results.)` : null,
+    };
+  }
+
+  // go to / open / visit a web address
+  m = /^(?:open|go to|visit|take me to|browse to|navigate to) ((?:https?:\/\/)?(?:[\w-]+\.)+[a-z]{2,}(?:\/\S*)?)$/i.exec(t);
+  if (m) {
+    const url = /^https?:\/\//i.test(m[1]) ? m[1] : `https://${m[1]}`;
+    return { calls: [{ name: 'open_url', input: { url } }], reply: `Opening ${m[1]}.` };
+  }
+
+  // open a well-known site by name
+  m = /^(?:open|go to|visit|take me to|launch) (.+)$/i.exec(t);
+  if (m && SITES[m[1].toLowerCase()]) return { calls: [{ name: 'open_url', input: { url: SITES[m[1].toLowerCase()] } }], reply: `Opening ${m[1]}.` };
+
+  // open an app (one app, nothing else asked)
+  m = /^(?:open|launch|start|run) (?:the |my )?([a-z0-9][\w .+&'-]{1,38}?)(?: app| application| program)?$/i.exec(t);
+  if (m && (/^file explorer$/i.test(m[1]) || !/\b(?:and|then|to|with|for|in|on|file|folder|it|this|that)\b/i.test(m[1]))) {
+    return { calls: [{ name: 'open_app', input: { name: m[1] } }], reply: `Opening ${m[1]}.` };
+  }
+  return null;
+}
+
+module.exports = { matchIntent, core };
