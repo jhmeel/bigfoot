@@ -153,6 +153,14 @@ async function start() {
   runtime.on('state', sendLoader);
   speech.on('state', sendLoader);
   ipcMain.handle('loader:status', () => loaderStatus());
+  // The overlay lets clicks through to the apps below; over the loader card it takes them (for its ×).
+  ipcMain.on('loader:pointer', (e, state) => {
+    const id = [...windows.overlays].find(([, w]) => !w.isDestroyed() && w.webContents === e.sender);
+    if (!id || controller.ink) return; // a tool owns the mouse
+    if (state === 'over') windows.setOverlaysInteractive(true, id[0]);
+    else if (state === 'show') windows.setOverlayPassthrough(id[0], true);
+    else windows.setOverlaysInteractive(false, id[0]);
+  });
   ipcMain.handle('loader:retry', () => { runtime.ensure().catch(() => {}); speech.preload(); return true; });
 
   activity.onEntry((entry) => windows.send(windows.terminal, 'terminal:line', entry));
@@ -168,6 +176,7 @@ async function start() {
   input.on('esc', () => controller.onEsc());
   input.on('wake', (confidence) => controller.onWake(confidence));
   input.on('dblclick', (p) => controller.onDesktopDoubleClick(p));
+  windows.activate = (hwnd) => input.activate(hwnd); // lets Bigfoot's own boxes take the keyboard
   const syncToolTray = () => input.watchDesktopDoubleClick(settings.get('toolTray')).catch(() => {});
   input.on('crash', (code) => {
     logger.error('Input helper exited', code);

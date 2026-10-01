@@ -26,7 +26,7 @@ function core(text) {
     .trim();
 }
 
-const NEXT_STEP = /\s*(?:,\s*)?(?:and then|and|then)\s+(?=(?:browse|open|click|show|tell|read|check|look|go|see|book|order|compare|select|choose|pick|get|list|summari[sz]e|call|reserve|scroll|view)\b)/i;
+const NEXT_STEP = /\s*(?:,\s*)?(?:and then|and|then)\s+(?=(?:browse|open|click|show|tell|read|check|look|go|see|book|order|compare|select|choose|pick|get|list|summari[sz]e|call|reserve|scroll|view|download|save|play|listen|watch)\b)/i;
 function splitFollowUp(s) {
   const m = NEXT_STEP.exec(s);
   return m ? [s.slice(0, m.index).trim(), s.slice(m.index + m[0].length).trim()] : [s.trim(), null];
@@ -45,14 +45,17 @@ function matchIntent(text) {
   }
 
   // [open chrome and] search [google] for … / google … / look up …
-  m = new RegExp(`^(?:(?:open|launch|start|use) ${BROWSERS}\\s*(?:,|and|then|and then)?\\s*)?(?:search(?: google| the web| online)?(?: for)?|google|look up|find me|find) (.+)$`, 'i').exec(t);
+  m = new RegExp(`^(?:(?:open|launch|start|use) ${BROWSERS}\\s*(?:,|and|then|and then)?\\s*)?(?:search(?: google| the web| online)?(?: for)?|google|look up|find me|find|browse(?: the web| online)?(?: for)?) (.+?)(?: on (?:google|chrome|the web|the internet|online))?$`, 'i').exec(t);
   if (m && !/\b(?:file|folder|document|on (?:my|this) (?:pc|computer|laptop))\b/i.test(m[1])) {
     // "… and browse their menu": search now, then the model carries on from the results page.
     const [query, rest] = splitFollowUp(m[1]);
+    // Songs and films usually aren't free to download: the model gets them playing instead.
+    const media = rest && /\b(?:download|save)\b/i.test(rest) && /\b(?:songs?|music|albums?|tracks?|mp3|movies?|films?|videos?|episodes?)\b/i.test(t);
+    const legal = media ? ' Only download it from a site that offers it free and legally, such as the artist\'s own page; otherwise play it on YouTube or a streaming site and say why it was not downloaded.' : '';
     return {
       calls: [{ name: 'open_url', input: { url: `https://www.google.com/search?q=${enc(query)}` } }],
       reply: `Searching Google for ${query}.`,
-      followUp: rest ? `${rest} (A Google search for "${query}" is already open in the browser: continue from those results.)` : null,
+      followUp: rest ? `${rest} (A Google search for "${query}" is already open in the browser: continue from those results.${legal})` : null,
     };
   }
 

@@ -476,6 +476,40 @@ internal static class InputHelper
     [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
     [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vk);
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr pid);
+    [DllImport("user32.dll")] static extern bool AttachThreadInput(uint from, uint to, bool attach);
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr h);
+    [DllImport("user32.dll")] static extern IntPtr SetFocus(IntPtr h);
+    [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+
+    /// <summary>
+    /// Bring a window to the foreground so it gets the keyboard. Windows refuses SetForegroundWindow
+    /// from a background app; joining the foreground window's input queue for a moment is the
+    /// standard way past that (used for Bigfoot's own question box, never for other apps).
+    /// </summary>
+    static bool Activate(IntPtr h)
+    {
+        IntPtr fg = GetForegroundWindow();
+        if (fg == h) return true;
+        uint me = GetCurrentThreadId();
+        uint fgThread = GetWindowThreadProcessId(fg, IntPtr.Zero);
+        uint target = GetWindowThreadProcessId(h, IntPtr.Zero);
+        bool a = fgThread != 0 && fgThread != me && AttachThreadInput(me, fgThread, true);
+        bool b = target != 0 && target != me && target != fgThread && AttachThreadInput(me, target, true);
+        try
+        {
+            BringWindowToTop(h);
+            SetForegroundWindow(h);
+            SetFocus(h);
+        }
+        finally
+        {
+            if (a) AttachThreadInput(me, fgThread, false);
+            if (b) AttachThreadInput(me, target, false);
+        }
+        return GetForegroundWindow() == h;
+    }
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
     [DllImport("user32.dll")] static extern int GetWindowTextLength(IntPtr h);
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -560,6 +594,7 @@ internal static class InputHelper
             case "mathink":
                 if (!MathRecognizer.Available) throw new InvalidOperationException("Windows Math Recognizer is not installed");
                 return Convert.ToBase64String(Encoding.UTF8.GetBytes(MathRecognizer.Recognize(TextArg(p, 2))));
+            case "activate": return Activate(new IntPtr(long.Parse(Arg(p, 2)))) ? "1" : "0";
             case "title":
                 {
                     IntPtr h = GetForegroundWindow();

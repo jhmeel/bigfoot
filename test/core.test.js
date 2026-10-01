@@ -167,3 +167,14 @@ test('the local model is the default, cloud is used only when chosen, keyed, and
   assert.equal(resolveProvider(fake('local', {})), null);
   assert.equal(resolveProvider(fake('local', {}, 'not-a-model')), null);
 });
+
+test('the math reader’s LaTeX becomes plain math, telling the letter x from ×', () => {
+  const { latexToText } = require('../src/main/latex');
+  assert.equal(latexToText(String.raw`\times ^ { 2 } - 5 \times + 6 = 0`), 'x^(2)-5x+6=0');
+  assert.equal(latexToText(String.raw`2 \times 3`), '2*3');
+  assert.equal(latexToText(String.raw`\frac { x + 1 } { 2 } = 5`), '(x+1)/2=5');
+  assert.equal(latexToText(String.raw`\sqrt { 4 9 } + 7 \times 8`), 'sqrt(49)+7*8');
+  assert.equal(latexToText(String.raw`2 x + \mid = 7`), '2x+1=7');
+  assert.equal(latexToText(String.raw`\int _ { 0 } ^ { 2 } x ^ { 2 } d x`), '∫(0,2)x^(2)dx');
+  assert.equal(latexToText(String.raw`\frac { d } { d x } ( x ^ { 3 } )`), 'd/dx (x^(3))');
+});

@@ -107,8 +107,14 @@ class WindowManager {
     const w = this.overlays.get(displayId);
     if (!w || w.isDestroyed()) return;
     w.setFocusable(on);
-    if (on) w.focus();
-    else w.blur();
+    if (!on) { w.blur(); return; }
+    w.focus();
+    // Windows won't hand the keyboard to a background app on request; the input helper can.
+    if (!w.isFocused() && this.activate) {
+      const handle = w.getNativeWindowHandle();
+      const hwnd = handle.length >= 8 ? handle.readBigUInt64LE(0) : BigInt(handle.readUInt32LE(0));
+      this.activate(hwnd.toString()).then(() => { if (!w.isDestroyed()) w.webContents.focus(); }).catch(() => {});
+    }
   }
 
   // ------------------------------------------------------------------ tool tray (double-click the desktop)

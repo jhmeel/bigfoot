@@ -9,16 +9,19 @@ const { ScreenTarget } = require('./capture');
 const { AgentError, toUserError } = require('./agent');
 const { resolveProvider } = require('./llm');
 const { readInk, interpretInk, splitScripts, pretty } = require('./mathink');
-const { solveSystem, evaluate, solveEquation } = require('./math');
+const { solveSystem, evaluate, solveEquation, normalize: normalizeMath } = require('./math');
 const cas = require('./cas');
 const { matchIntent } = require('./intents');
 const { mathmlToText } = require('./mathml');
+const { latexToText } = require('./latex');
+const mathread = require('./mathread');
 const voice = require('./voice');
 
 const PTT_DELAY_MS = 150;      // ignore quick Ctrl+Alt shortcuts; only a hold starts listening
 const MIN_RECORDING_MS = 350;
 const ONBOARDING_VERSION = 2; // 2 added the on-device model step
-const STOP_TALKING =/^\W*(?:(?:ok(?:ay)?|hey|thanks?)\W+)?(?:stop listening|stop talking|stop voice|that'?s all|that is all|good ?bye|bye)\W*$/i;
+// "Stop listening", "okay stop listening now", "stop listening please, Bigfoot", "that's all thanks"…
+const STOP_TALKING = /^\W*(?:(?:ok(?:ay)?|hey|thanks?|please|big ?foot)\W+)*(?:stop listening|stop talking|stop voice|that'?s all|that is all|good ?bye|bye)(?:\W+(?:now|please|thanks?|thank you|big ?foot|for now))*\W*$/i;
 const STATE_LABELS ={ idle: 'Ready', listening: 'Listening…', processing: 'Thinking…', acting: 'Working…', responding: 'Talking…' };
 
 class Controller {
@@ -479,8 +482,9 @@ class Controller {
   startInk(mode, displayId, { tool = null, focus = true } = {}) {
     if (mode === 'math') {
       cas.compute('1').catch(() => {}); // load the math engine while the user writes
+      mathread.warm().catch(() => {}); // and the handwriting reader (a second or two the first time)
       // Start Windows' Math Recognizer now (its first reading takes seconds), with one tiny stroke.
-      if (this.mathRecognizer !== false && !this.mathRecognizerWarm) {
+      if (!mathread.available() && this.mathRecognizer !== false && !this.mathRecognizerWarm) {
         this.mathRecognizerWarm = true;
         this.input.recognizeMath([[{ x: 10, y: 10 }, { x: 30, y: 10 }]]).catch(() => { this.mathRecognizerWarm = false; });
       }
@@ -609,16 +613,25 @@ class Controller {
     this.windows.setOverlayPassthrough(displayId, on);
   }
 
-  /** Live reading of the math tool's handwriting with the Windows recognizer. */
-  async readMathInk(strokes) {
+  /** Live reading of the math tool's handwriting: the built-in math reader, else Windows' recognizers. */
+  async readMathInk(strokes, image) {
     const clean = (Array.isArray(strokes) ? strokes : []).slice(0, 300).map((s) => (Array.isArray(s) ? s : [])
       .slice(0, 2000).filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y))).filter((s) => s.length);
     if (!clean.length) return { ok: true, text: '', status: 'unknown' };
     try {
-      // Windows' Math Recognizer reads math as math (powers, fractions, roots, x vs ×), so it goes
-      // first. The plain handwriting recognizer is the fallback where it isn't installed.
+      // The math reader (./mathread) reads a picture of the writing, like a person would. Without it,
+      // Windows' Math Recognizer, then the plain handwriting recognizer.
       let segments = null;
-      if (this.mathRecognizer !== false) {
+      let byReader = false;
+      if (image && mathread.available()) {
+        try {
+          const text = latexToText(await mathread.readFormula(Buffer.from(image)));
+          if (text) { segments = [[text]]; byReader = true; }
+        } catch (err) {
+          this.logger.error('Math reader failed, using Windows recognition', err.message);
+        }
+      }
+      if (!segments && this.mathRecognizer !== false) {
         try {
           const text = mathmlToText(await this.input.recognizeMath(clean));
           if (text) segments = [[text]];
@@ -637,6 +650,9 @@ class Controller {
         }
       }
       const res = interpretInk(segments);
+      // Without the math reader, a PC with a graphics card (or a cloud model) reads an image in
+      // seconds: there the AI double-checks the Windows reading.
+      res.aiFast = !byReader && (this.provider() !== 'local' || Boolean(this.runtime.tuning && !this.runtime.tuning.cpuOnly));
       if (res.status === 'compute') {
         try {
           const r = await cas.compute(res.compute);
@@ -695,8 +711,10 @@ class Controller {
   async readMath(png) {
     try {
       const r = await readInk({ png: Buffer.from(png), settings: this.settings, runtime: this.runtime, online: this.isOnline() });
-      if (r.expression) this.activity.add('info', `Math: ${r.expression}${r.answer ? ` = ${r.answer}` : ''}`);
-      return { ok: true, ...r };
+      if (r.expression) this.activity.add('info', `Math (read by the AI): ${r.expression}${r.answer ? ` = ${r.answer}` : ''}`);
+      const isForm = /^(?:diff|integrate|defint|limit|dot|cross|sum|system|simplify|solve)\(/.test(r.expression || '');
+      const text = !r.expression ? '' : isForm ? cas.display(r.expression) : pretty(normalizeMath(r.expression));
+      return { ok: true, ...r, text };
     } catch (err) {
       this.logger.error('Math tool failed', err.message);
       return { ok: false, message: err.message };

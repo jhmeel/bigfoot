@@ -177,6 +177,7 @@ class Agent {
         request = (p) => p.addUserMessage(task);
       }
       if (provider.startTask) provider.startTask(); // keep earlier turns lean (local model)
+      if (provider.restorePrefix) await provider.restorePrefix(); // full saved instructions, even after a stop
       request(provider);
       try {
         return await this.loop(provider, this.abort.signal);

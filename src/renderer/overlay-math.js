@@ -166,6 +166,31 @@
   const ICON_SHARE = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12.5V3M6.5 6.5L10 3l3.5 3.5"/><path d="M6 9.5H5a1.5 1.5 0 0 0-1.5 1.5v4.5A1.5 1.5 0 0 0 5 17h10a1.5 1.5 0 0 0 1.5-1.5V11A1.5 1.5 0 0 0 15 9.5h-1"/></svg>';
   const ICON_TICK = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"/></svg>';
 
+  /**
+   * The AI reads the handwriting from the picture (it copes with handwriting the recognizer gets
+   * wrong); the answer still comes from the exact engines, never from the AI's own arithmetic.
+   */
+  async function aiRead(grp) {
+    const version = grp.version;
+    showAnswer(grp, { state: 'thinking', title: 'The AI is reading your handwriting…' });
+    showWorking(grp, null);
+    let ai;
+    try {
+      ai = await api.invoke('math:read', await snapshot(grp));
+    } catch (err) {
+      ai = { ok: false, message: err.message };
+    }
+    if (!groups.includes(grp) || grp.version !== version) return; // more ink arrived meanwhile
+    if (!ai.ok || !ai.expression) {
+      showAnswer(grp, { state: 'unknown', text: '?', title: ai.message || 'The AI couldn’t read that' });
+      return;
+    }
+    grp.result = null;
+    showReading(grp, ai.text || ai.expression);
+    if (ai.answer) { showAnswer(grp, { state: 'done', text: ai.answer.replace(/^=\s*/, ''), title: 'Read by the AI' }); showWorking(grp, ai.steps); }
+    else showAnswer(grp, { state: 'unknown', text: '?', title: 'Read by the AI, but there was nothing to solve' });
+  }
+
   const button = (cls, label, onClick) => {
     const b = document.createElement('button');
     b.className = cls;
@@ -253,6 +278,31 @@
   }
 
   // ---------------------------------------------------------------- reading
+  /** The writing drawn the way the math reader sees it: 384×384, stretched to fill, dark on white. */
+  function readerPixels(grp) {
+    const b = grp.box;
+    const pad = 16;
+    const w = b.x1 - b.x0 + pad * 2;
+    const h = b.y1 - b.y0 + pad * 2;
+    const scale = Math.min(3, 1536 / Math.max(w, h)); // draw large, then shrink smoothly
+    const big = new OffscreenCanvas(Math.max(16, Math.round(w * scale)), Math.max(16, Math.round(h * scale)));
+    const c = big.getContext('2d');
+    c.fillStyle = '#ffffff';
+    c.fillRect(0, 0, big.width, big.height);
+    c.setTransform(scale, 0, 0, scale, (pad - b.x0) * scale, (pad - b.y0) * scale);
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+    c.lineWidth = 3.5;
+    c.strokeStyle = '#111111';
+    for (const s of grp.strokes) strokePath(c, s);
+    const out = new OffscreenCanvas(384, 384);
+    const o = out.getContext('2d');
+    o.imageSmoothingEnabled = true;
+    o.imageSmoothingQuality = 'high';
+    o.drawImage(big, 0, 0, 384, 384);
+    return new Uint8Array(o.getImageData(0, 0, 384, 384).data.buffer);
+  }
+
   async function snapshot(grp) {
     const b = grp.box;
     const pad = 24;
@@ -273,14 +323,14 @@
   }
 
   /**
-   * Recognize the handwriting (Windows, ~0.1 s) and show the clean reading as the user writes.
+   * Read the handwriting (about a second) and show the clean reading as the user writes.
    * Answers wait for Solve: "=" alone can't tell a sum from an equation.
    */
   async function read(grp) {
     const version = grp.version;
     let res;
     try {
-      res = await api.invoke('math:ink', grp.strokes);
+      res = await api.invoke('math:ink', grp.strokes, readerPixels(grp));
     } catch (err) {
       res = { ok: false, message: err.message };
     }
@@ -294,6 +344,8 @@
   async function solve(grp) {
     const version = grp.version;
     const res = grp.result;
+    // On a fast PC the AI reading takes seconds: use it, it handles handwriting the recognizer misreads.
+    if (res && res.aiFast && !grp.aiChecked) { grp.aiChecked = true; await aiRead(grp); return; }
     switch (res && res.status) {
       case 'writing':
       case 'answer': showAnswer(grp, { state: 'done', text: res.answer, title: res.expression }); return;
@@ -331,6 +383,7 @@
   function schedule(grp) {
     grp.version++;
     grp.result = null;
+    grp.aiChecked = false; // new ink: a fresh AI reading may be needed
     clearTimeout(grp.timer);
     showAnswer(grp, { state: 'none' }); // the ink changed: the old answer no longer applies
     if (grp.working) showWorking(grp, null);
