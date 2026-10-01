@@ -239,6 +239,24 @@ test('a streamed answer is rebuilt exactly, text and tool calls, while the text 
   assert.deepEqual(msg.tool_calls, [{ id: 'c1', type: 'function', function: { name: 'open_app', arguments: '{"name":"Notepad"}' } }]);
 });
 
+test('a new request keeps earlier turns as text only, so it never re-reads old screenshots', () => {
+  const p = new LocalProvider({ runtime: {}, model: 'm', system: 'SYS', tools: [], screen: { width: 1000, height: 500 } });
+  const img = { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } };
+  p.messages.push(
+    { role: 'user', content: [{ type: 'text', text: 'hi' }] },
+    { role: 'assistant', content: 'Hi there!' },
+    { role: 'user', content: [{ type: 'text', text: 'open chrome and search hospital' }] },
+    { role: 'assistant', content: null, tool_calls: [{ id: 'a', type: 'function', function: { name: 'open_app', arguments: '{}' } }] },
+    { role: 'tool', tool_call_id: 'a', content: 'Opened' },
+    { role: 'user', content: [img, { type: 'text', text: 'Screen after those actions' }] },
+    { role: 'user', content: [{ type: 'text', text: 'find and download a song' }] }, // stopped, never answered
+  );
+  const system = p.messages[0];
+  p.startTask();
+  assert.equal(p.messages[0], system); // the saved instructions stay valid
+  assert.deepEqual(p.messages.slice(1), [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'Hi there!' }]);
+});
+
 test('requests to the local model wait as long as it makes progress, and stop when it stalls', async () => {
   const http = require('http');
   const { localPost } = require('../src/main/llm/localhttp');

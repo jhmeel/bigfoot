@@ -179,6 +179,33 @@ class LocalProvider extends OpenAIProvider {
     return { ...out, text: this.convertText(out.text), calls: out.calls.map((c) => this.convertCall(c)) };
   }
 
+  /**
+   * A new request from the user. Earlier turns are kept as plain text (what was asked and what was
+   * answered), without their screenshots and tool steps. On a CPU each kept screenshot is read
+   * again on every request (minutes each), and a stopped task leaves history that no longer matches
+   * the saved instructions; then one request took over an hour. Text keeps the conversation's memory
+   * and costs seconds.
+   */
+  startTask() {
+    const text = (m) => (Array.isArray(m.content) ? m.content.filter((p) => p.type === 'text').map((p) => p.text).join(' ') : String(m.content || '')).trim();
+    const turns = [];
+    for (const m of this.messages.slice(1)) {
+      const t = text(m);
+      if (!t) continue;
+      if (m.role === 'user' && !/^(?:Screen after|Don’t describe it|Your last response|\[older screenshot)/.test(t)) {
+        turns.push({ role: 'user', content: t.replace(/\n\n\((?:I traced|I highlighted|I drew)[\s\S]*$/, '').slice(0, 500) });
+      } else if (m.role === 'assistant' && !(m.tool_calls && m.tool_calls.length)) {
+        turns.push({ role: 'assistant', content: t.slice(0, 500) });
+      }
+    }
+    // Two user turns in a row (a stopped request never got its answer): keep the later one.
+    const clean = turns.filter((m, i) => !(m.role === 'user' && turns[i + 1] && turns[i + 1].role === 'user'));
+    while (clean.length && clean[0].role !== 'user') clean.shift();
+    while (clean.length && clean[clean.length - 1].role === 'user') clean.pop(); // asked, never answered (stopped)
+    this.messages = [this.messages[0], ...clean.slice(-6)];
+    this.keepImages = 4;
+  }
+
   /** Context overflow: keep only the current request and one screenshot. */
   shrinkHistory() {
     const system = this.messages[0];
