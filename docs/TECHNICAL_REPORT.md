@@ -347,13 +347,13 @@ when response headers haven't arrived within 300 s: the logs show every warm-up 
 5 min 2–3 s, so the cache was never built and every request started from zero (a replay of the
 real request ran 10 minutes without an answer). Endpoint and parsing were correct.
 
-Fix (no quality trade-off, nothing removed): local requests go through \`llm/localhttp.js\`, plain
+Fix (no quality trade-off, nothing removed): local requests go through `llm/localhttp.js`, plain
 HTTP with no total timeout, dropped only after 15 minutes without any data; the one-time preparation
-is never cut off. It streams with \`return_progress\`; the prefix is read once, saved with the slot
+is never cut off. It streams with `return_progress`; the prefix is read once, saved with the slot
 API, and restored on later starts. The loader shows "Getting Bigfoot ready for first use" with
 progress (or elapsed time when the build reports progress only at the end), and requests made
 meanwhile queue behind it without being counted as stalled. The wake-word recognizer (a CPU core,
-including Windows audio) pauses while the AI works. \`--batch-size 512\` for finer progress.
+including Windows audio) pauses while the AI works. `--batch-size 512` for finer progress.
 
 Also: handwriting keeps the recognizer's top reading when it contains letters ("2x" is never
 replaced by a computable "24"; "y" never by "2"); algebra without "=" is simplified by the engine.
