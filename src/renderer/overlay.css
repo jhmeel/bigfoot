@@ -179,6 +179,12 @@ body.math #math-layer { display: block; pointer-events: auto; cursor: crosshair;
 .math-share:hover, .calc-copy:hover { background: rgba(51, 128, 255, 0.25); }
 .math-share.done, .calc-copy.done { color: #32d74b; border-color: rgba(50, 215, 75, 0.5); background: rgba(50, 215, 75, 0.12); }
 .math-share[hidden] { display: none; }
+.math-read-text { pointer-events: auto; cursor: text; padding: 1px 3px; border-radius: 4px; }
+.math-read-text:hover { background: rgba(255, 255, 255, 0.1); outline: 1px dashed rgba(125, 178, 255, 0.6); }
+.math-fix {
+  pointer-events: auto; min-width: 140px; height: 24px; padding: 0 6px; border-radius: 5px;
+  border: 1px solid rgba(125, 178, 255, 0.7); background: rgba(0, 0, 0, 0.5); color: #fff; font: 500 14px var(--font); outline: none;
+}
 .math-answer {
   position: absolute; transform: translateY(-50%) scale(0.9); opacity: 0; white-space: nowrap;
   font: 600 32px/1 var(--font); color: #7db2ff; letter-spacing: -0.01em;

@@ -56,6 +56,7 @@ const SUPER = { 0: '⁰', 1: '¹', 2: '²', 3: '³', 4: '⁴', 5: '⁵', 6: '⁶
 const superscript = (s) => ([...s].every((ch) => SUPER[ch]) ? [...s].map((ch) => SUPER[ch]).join('') : null);
 const pretty = (s) => s
   .replace(/\^\(([^()]+)\)|\^([\dnxy])/g, (m, a, b) => superscript(a || b) || m)
+  .replace(/sqrt\(([\w.]+)\)/g, '√$1').replace(/sqrt\(/g, '√(').replace(/\bpi\b/g, 'π')
   .replace(/\*/g, '×').replace(/\//g, '÷').replace(/\s*([+\-×÷=])\s*/g, ' $1 ').replace(/\s+/g, ' ').trim();
 
 /**

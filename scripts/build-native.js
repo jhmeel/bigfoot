@@ -20,6 +20,8 @@ const winmd = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'Wi
 execFileSync(path.join(fw, 'csc.exe'), [
   '-nologo', '-optimize', '-target:exe', `-lib:${path.join(fw, 'WPF')}`,
   '-r:System.Speech.dll', '-r:UIAutomationClient.dll', '-r:UIAutomationTypes.dll', '-r:WindowsBase.dll',
+  // Windows' Math Recognizer (Math Input Control, COM) for handwritten math
+  '-r:System.Windows.Forms.dll', '-r:Microsoft.CSharp.dll', '-r:System.Core.dll',
   // Windows handwriting recognition (WinRT) without the Windows SDK
   `-r:${path.join(fw, 'System.Runtime.dll')}`, `-r:${path.join(fw, 'System.Runtime.WindowsRuntime.dll')}`,
   `-r:${path.join(winmd, 'Windows.Foundation.winmd')}`, `-r:${path.join(winmd, 'Windows.UI.winmd')}`,

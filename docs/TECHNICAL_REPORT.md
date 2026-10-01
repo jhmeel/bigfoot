@@ -359,6 +359,30 @@ Also: handwriting keeps the recognizer's top reading when it contains letters ("
 replaced by a computable "24"; "y" never by "2"); algebra without "=" is simplified by the engine.
 In Draw, a pause that snapped a stroke no longer freezes it: moving on continues the freehand stroke.
 
+## 9c. 1.4.3: handwritten math read by Windows' Math Recognizer
+
+The general handwriting recognizer (WinRT InkRecognizerContainer) reads text, so math broke on
+"2x" (read as "24"), raised exponents, and fractions. Researched options: open-source recognizers
+([MathNote OCR](https://github.com/YonatanNemtsov/mathnote-ocr), stroke-based, PyTorch;
+[SESHAT](https://github.com/falvaro/seshat); image-to-LaTeX models such as LaTeX-OCR/pix2tex) would
+add a Python or ONNX runtime. Windows ships its own math recognizer (micaut.dll and mraut.dll,
+present on the test PC), the engine behind the Math Input Panel, which returns MathML.
+
+Its control (`MathInputControl`, CLSID c561816c-…, events `_IMathInputControlEvents` 683336b5-…,
+Insert = DISPID 0) only hands over its result when its Insert button is pressed, and only recognizes
+while on screen. The helper (`MathRecognizer` in InputHelper.cs) keeps one instance on its own STA
+thread: the window is on screen but layered with alpha 0, click-through, a tool window, and never
+activated, so the user never sees it. Strokes go in through an `InkDisp` (pixels × 26.46 → HIMETRIC),
+Insert is pressed with UI Automation, and the MathML arrives in the event. The event sink must be a
+public top-level COM-visible class (nested in a non-public class, Advise fails with 0x80040202). The
+first reading creates the control (seconds), so the Math tool warms it up when it opens; later
+readings take about 0.8 s. `mathml.js` turns MathML into the solvers' notation (msup → ^( ),
+mfrac → a/b, msqrt → sqrt( ), ∫ with limits → ∫(a,b), d over dx → d/dx).
+
+Measured end to end with strokes drawn by the real mouse: "2x+1=7" read exactly and solved; the
+raised 2 in x²−5x+6=0 read as a power. Computer-drawn digits were sometimes misread (5→9, 6→b), so
+the reading under the writing is now editable: tap, fix, Enter, and it's solved as typed.
+
 ## 10. Performance
 
 | Hardware | Model | Chat answer | Step with a screenshot |

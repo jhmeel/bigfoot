@@ -128,14 +128,26 @@ function compute(text, timeoutMs = TIMEOUT_MS) {
   });
 }
 
+/** (x^(3)+1) → x^(3)+1, but (x+1)(x-1) stays: only one pair of brackets around everything. */
+function unwrap(s) {
+  if (!s.startsWith('(') || !s.endsWith(')')) return s;
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '(') depth++;
+    else if (s[i] === ')') depth--;
+    if (depth === 0 && i < s.length - 1) return s; // the first bracket closes early
+  }
+  return s.slice(1, -1);
+}
+
 /**
  * Calculus and vectors as people write them, in the notation compute() takes; null if it's
  * neither. d/dx x^3, ∫x^2dx, ∫(0,3) x^2 dx, [1,2,3]·[4,5,6], [1,2,3]×[4,5,6], |[3,4]|.
  */
 function fromHandwriting(text) {
   const s = toCas(text).replace(/\s+/g, '').replace(/=+$/, '');
-  let m = /^d(?:y)?\/d([a-z])\(?(.+?)\)?$/i.exec(s);
-  if (m) return `diff(${m[2]},${m[1]})`;
+  let m = /^d(?:y)?\/d([a-z])(.+)$/i.exec(s);
+  if (m) return `diff(${unwrap(m[2])},${m[1]})`;
   m = /^[∫Sf]_?\(?([^,()]+),([^,()]+)\)?(.+)d([a-z])$/.exec(s);
   if (m) return `defint(${m[3]},${m[1]},${m[2]},${m[4]})`;
   m = /^[∫Sf](.+)d([a-z])$/.exec(s);
