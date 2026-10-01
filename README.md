@@ -43,6 +43,12 @@ corner of the screen, and a bar in the chat, show each step and the percentage u
 "Bigfoot is ready". You can type meanwhile; the answer comes as soon as it's loaded. A load that is
 still making progress is never cut off; if it truly fails, the chat offers **Try Again**.
 
+**First use:** every request includes Bigfoot's instructions and the descriptions of all its tools
+(about 3,500 tokens), so the model can choose the right tool. The model reads them once, the first
+time ("Getting Bigfoot ready for first use"; about 8–10 minutes on a laptop without a graphics card,
+seconds with one), and Bigfoot saves the result. Every later start restores it in about a second,
+and each request only has to read what you said. Nothing is left out to make it faster.
+
 You can keep using Bigfoot while it downloads; a banner in the main window shows progress with
 Pause, Resume, and Retry. Losing the connection, going offline, or quitting never restarts the
 download: it continues from the bytes already saved. Every file is pinned to an exact upstream

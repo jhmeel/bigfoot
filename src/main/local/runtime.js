@@ -221,6 +221,7 @@ class LocalRuntime extends EventEmitter {
       '--jinja', '--no-webui',
       '--image-max-tokens', String(this.tuning.imageTokens),
       '--cache-reuse', '256', // reuse cached context even after older screenshots are dropped
+      '--batch-size', '512', // same speed (the compute chunk is 512 anyway), but progress is reported every 512 tokens
       '--threads', String(threadCount()), '--threads-batch', String(threadCount()),
       '--slot-save-path', this.cacheDir(),
       ...memoryArgs(),
@@ -289,8 +290,21 @@ class LocalRuntime extends EventEmitter {
     this.emit('progress', { state: percent >= 100 ? 'ready' : 'loading', percent, label, elapsed: Date.now() - (this.loadStarted || Date.now()) });
   }
 
+  /**
+   * Reading Bigfoot's instructions and tools the first time (saved afterwards, so later starts
+   * restore them in a second). Requests wait for it: they need the same reading.
+   * @param {number|null} percent null when done
+   */
+  setPreparing(percent) {
+    this.preparing = percent == null ? null : { percent: Math.max(0, Math.min(99, Math.round(percent))), since: (this.preparing && this.preparing.since) || Date.now() };
+    this.emit('progress', this.status());
+  }
+
   /** What the loader shows right now. */
   status() {
+    if (this.endpoint && this.preparing) {
+      return { state: 'preparing', percent: this.preparing.percent, label: 'Preparing for first use (one time)', elapsed: Date.now() - this.preparing.since };
+    }
     if (this.endpoint) return { state: 'ready', percent: 100, label: 'Ready' };
     if (this.starting) return { state: 'loading', percent: this.lastPercent || 3, label: this.lastLabel || 'Starting', elapsed: Date.now() - (this.loadStarted || Date.now()) };
     if (this.failed) return { state: 'failed', percent: 0, label: this.failed };

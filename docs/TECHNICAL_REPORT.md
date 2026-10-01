@@ -1,4 +1,4 @@
-# Bigfoot 1.4.0 — Technical report
+# Bigfoot 1.4.1 — Technical report
 
 Scope: the move to an on-device AI (Qwen3-VL) as the default model, the tool tray, Draw and Math,
 continuous voice (Talk), the plugin validator, onboarding and settings changes, and the installer.
@@ -335,6 +335,29 @@ The Draw tool shares (copy with screen, PNG, SVG), and `edit_drawing` can `read`
 SVG and `replace` it with an edited version. Area questions show the captured area in the chat.
 Voices default to female. Models switch without a restart; the old model's files and saved prompts
 are deleted after the runtime has stopped (Windows can't delete files in use).
+
+## 9b. 1.4.1: why the loaded 4B still didn't answer
+
+Measured on the test laptop with the production model (verified identical to Hugging Face's
+Qwen/Qwen3-VL-4B-Instruct-GGUF Q4_K_M and mmproj Q8_0 by SHA-256): alone, the model answers
+"Hi" in 7 s (reads ~5–10 tokens/s, writes ~3–4). Bigfoot's request is 3,495 tokens (instructions
+3,410 chars + 12 tool definitions 9,476 chars), ~8–10 minutes of reading on this CPU. That prefix is
+the same every time and llama.cpp caches it, but Bigfoot's warm-up used Node's fetch, which aborts
+when response headers haven't arrived within 300 s: the logs show every warm-up failing at exactly
+5 min 2–3 s, so the cache was never built and every request started from zero (a replay of the
+real request ran 10 minutes without an answer). Endpoint and parsing were correct.
+
+Fix (no quality trade-off, nothing removed): local requests go through \`llm/localhttp.js\`, plain
+HTTP with no total timeout, dropped only after 15 minutes without any data; the one-time preparation
+is never cut off. It streams with \`return_progress\`; the prefix is read once, saved with the slot
+API, and restored on later starts. The loader shows "Getting Bigfoot ready for first use" with
+progress (or elapsed time when the build reports progress only at the end), and requests made
+meanwhile queue behind it without being counted as stalled. The wake-word recognizer (a CPU core,
+including Windows audio) pauses while the AI works. \`--batch-size 512\` for finer progress.
+
+Also: handwriting keeps the recognizer's top reading when it contains letters ("2x" is never
+replaced by a computable "24"; "y" never by "2"); algebra without "=" is simplified by the engine.
+In Draw, a pause that snapped a stroke no longer freezes it: moving on continues the freehand stroke.
 
 ## 10. Performance
 

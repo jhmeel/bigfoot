@@ -49,6 +49,7 @@ class Controller {
     this.windows.send(this.windows.panel, 'state', next);
     if (this.windows.tray) this.windows.tray.setToolTip(`${this.name} · ${STATE_LABELS[next] || 'Ready'}`);
     if (next === 'idle') this.continueVoice();
+    this.pauseWakeWord(next === 'processing' || next === 'acting');
   }
 
   // ------------------------------------------------------------------ Talk (continuous voice)
@@ -178,6 +179,21 @@ class Controller {
       this.activity.add('error', `Wake word is unavailable: ${err.message}. Hold Ctrl + Alt to talk instead.`);
     }
     return this.wakeActive;
+  }
+
+  /**
+   * The wake-word recognizer listens continuously, which costs a CPU core (Windows audio included).
+   * It's paused while the AI works, when the model needs every core and "Hey Bigfoot" does
+   * nothing anyway, and resumes when Bigfoot is idle again.
+   */
+  pauseWakeWord(paused) {
+    if (paused && this.wakeActive && !this.wakePaused) {
+      this.wakePaused = true;
+      this.input.wakeOff().catch(() => {});
+    } else if (!paused && this.wakePaused) {
+      this.wakePaused = false;
+      if (this.settings.get('wakeWord')) this.input.wake([this.name]).catch(() => {});
+    }
   }
 
   onWake(confidence) {
@@ -654,7 +670,9 @@ class Controller {
     this.panelLog('user', text);
     this.logger.audit('task', { source, chars: text.length, region: Boolean(region) });
     this.setState('processing');
-    this.bubble(this.provider() === 'local' && !this.runtime.running ? 'one moment, my AI is still loading…' : '');
+    const local = this.provider() === 'local';
+    this.bubble(local && this.runtime.preparing ? `getting ready for first use (${this.runtime.preparing.percent}%). your answer comes right after…`
+      : local && !this.runtime.running ? 'one moment, my AI is still loading…' : '');
     try {
       const result = await this.agent.run(text, { region: sentRegion, drawing });
       this.sendUsage();
@@ -710,13 +728,29 @@ class Controller {
 
   /** Warm the local model's cache so the first request only has to read the new screenshot and words. */
   async warmLocal() {
-    if (this.provider() !== 'local' || this.agent.running) return;
+    if (this.provider() !== 'local' || this.agent.running || this.warming) return;
+    this.warming = true;
+    const started = Date.now();
     try {
       const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
       this.agent.setTarget(new ScreenTarget(display, this.screenshotEdge()));
-      await this.agent.warm();
+      this.runtime.setPreparing(0);
+      this.pauseWakeWord(true);
+      let percent = 0;
+      // Some llama.cpp builds report reading progress only at the start and end: keep the clock moving.
+      const tick = setInterval(() => { if (this.runtime.preparing) this.runtime.setPreparing(percent); }, 5000);
+      const restored = await this.agent.warm((p) => {
+        if (p && p.total) { percent = (100 * p.processed) / p.total; this.runtime.setPreparing(percent); }
+      }).finally(() => clearInterval(tick));
+      this.logger.info(restored
+        ? `The local AI's instructions were restored from disk (${Math.round((Date.now() - started) / 1000)} s)`
+        : `The local AI read its instructions once and saved them (${Math.round((Date.now() - started) / 1000)} s); later starts restore them`);
     } catch (err) {
-      this.logger.error('Couldn’t warm the local AI', err.message);
+      this.logger.error('Couldn’t prepare the local AI', err.message);
+    } finally {
+      this.warming = false;
+      this.runtime.setPreparing(null);
+      this.pauseWakeWord(this.state === 'processing' || this.state === 'acting');
     }
   }
 

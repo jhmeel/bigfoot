@@ -239,6 +239,51 @@ test('a streamed answer is rebuilt exactly, text and tool calls, while the text 
   assert.deepEqual(msg.tool_calls, [{ id: 'c1', type: 'function', function: { name: 'open_app', arguments: '{"name":"Notepad"}' } }]);
 });
 
+test('requests to the local model wait as long as it makes progress, and stop when it stalls', async () => {
+  const http = require('http');
+  const { localPost } = require('../src/main/llm/localhttp');
+  const { readStream } = require('../src/main/llm/local');
+  // A slow model: reading progress every 150 ms for 0.9 s (longer than the 400 ms stall limit), then the answer.
+  const server = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => { body += d; });
+    req.on('end', () => {
+      if (req.url === '/hang') { res.writeHead(200, { 'Content-Type': 'text/event-stream' }); res.flushHeaders(); return; } // starts, then says nothing
+      if (req.url === '/queued') { setTimeout(() => { res.writeHead(200); res.end('{"ok":true}'); }, 900); return; }
+      assert.equal(JSON.parse(body).return_progress, true);
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      let n = 0;
+      const tick = setInterval(() => {
+        n += 1;
+        res.write(`data: ${JSON.stringify({ prompt_progress: { total: 6, cache: 0, processed: n, time_ms: n * 150 } })}\n\n`);
+        if (n === 6) {
+          clearInterval(tick);
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: 'Hi!' }, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`);
+          res.end();
+        }
+      }, 150);
+    });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const url = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const progress = [];
+    const res = await localPost(`${url}/v1/chat/completions`, { key: 'k', body: { return_progress: true }, stallMs: 400 });
+    const out = await readStream(res, () => {}, (p) => progress.push(p.processed));
+    assert.equal(out.choices[0].message.content, 'Hi!');
+    assert.deepEqual(progress, [1, 2, 3, 4, 5, 6]); // shown as a progress bar, never mistaken for text
+
+    // Silent before or after the reply starts: either way it's reported as a stall.
+    await assert.rejects(localPost(`${url}/hang`, { body: {}, stallMs: 300 }).then((r) => readStream(r, () => {})), (err) => err.stalled === true);
+
+    // Queued behind the one-time preparation: silence is expected, so it isn't a stall.
+    const queued = await localPost(`${url}/queued`, { body: {}, stallMs: 300, waiting: () => true });
+    assert.deepEqual(await queued.json(), { ok: true });
+  } finally {
+    server.close();
+  }
+});
+
 test('old screenshots are dropped in batches so the cached context survives', () => {
   const p = new LocalProvider({ runtime: {}, model: 'm', system: 's', tools: [], screen: { width: 100, height: 100 } });
   const shot = () => p.messages.push({ role: 'user', content: [{ type: 'image_url', image_url: { url: 'x' } }] });
@@ -281,6 +326,11 @@ test('handwriting is read live: answered after "=", checked when the user wrote 
   assert.equal(interpretInk([['3x+2=2x+5']]).answer, 'x = 3'); // "=" inside an equation isn't an answer
   assert.equal(interpretInk([['x+y=2']]).answer, 'y = 2 − x'); // two unknowns: solved for one
   assert.equal(interpretInk([['xy=6']]).status, 'solve'); // not linear: the model reads it
+  // The recognizer's best reading decides letters vs digits: "2x" never becomes "24", "y" never "2".
+  assert.equal(interpretInk([['2x', '24']]).text, '2x');
+  assert.equal(interpretInk([['y', '2']]).text, 'y');
+  assert.equal(interpretInk([['2x+1=7', '24+1=7']]).answer, 'x = 3');
+  assert.equal(interpretInk([['24', '2x']]).answer, '24');
   assert.equal(interpretInk([['hello']]).status, 'unknown');
 });
 
