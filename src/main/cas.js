@@ -152,6 +152,13 @@ function fromHandwriting(text) {
   if (m) return `defint(${m[3]},${m[1]},${m[2]},${m[4]})`;
   m = /^[∫Sf](.+)d([a-z])$/.exec(s);
   if (m) return `integrate(${m[1]},${m[2]})`;
+  // No dx written (∫(2x+5), or the AI's int(2x+5)): the one letter in it is the variable.
+  m = /^(?:∫|int(?=\())(?:\(([^,()]+),([^,()]+)\))?(.+)$/.exec(s);
+  if (m) {
+    const body = unwrap(m[3]);
+    const letters = [...new Set(body.replace(/sqrt|asin|acos|atan|sinh|cosh|tanh|sin|cos|tan|log|ln|exp|pi/g, '').match(/[a-z]/g) || [])];
+    if (letters.length === 1) return m[1] != null ? `defint(${body},${m[1]},${m[2]},${letters[0]})` : `integrate(${body},${letters[0]})`;
+  }
   m = /^(\[[^\]]+\])[·.•](\[[^\]]+\])$/.exec(s);
   if (m) return `dot(${m[1]},${m[2]})`;
   m = /^(\[[^\]]+\])[*x](\[[^\]]+\])$/.exec(s);

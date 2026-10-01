@@ -150,6 +150,7 @@ async function start() {
     const status = loaderStatus();
     windows.broadcast('loader', status);
     windows.send(windows.main, 'loader', status);
+    windows.setToolsBlocked(controller.aiNotReady());
     if (windows.tray) windows.tray.setToolTip(status.ai.state === 'loading' ? `Bigfoot · Loading the AI (${status.ai.percent}%)` : 'Bigfoot');
   };
   runtime.on('progress', sendLoader);

@@ -475,3 +475,73 @@ test('old screen lists are dropped in batches, keeping the latest two', () => {
   p.trimLists(); // with two left there's nothing more to drop
   assert.equal(p.messages.slice(1).filter((m) => /On screen:/.test(m.content)).length, 2);
 });
+
+test('the saved instructions are always the instructions, even when a math reading arrives mid-way', async () => {
+  const { LocalRuntime } = require('../src/main/local/runtime');
+  const { askLocal } = require('../src/main/llm/local');
+  // A one-slot model server: it reuses the longest common start of what it holds, like llama.cpp.
+  let slot = '';
+  const files = {};
+  const log = [];
+  const server = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => { body += d; });
+    req.on('end', () => {
+      const b = JSON.parse(body || '{}');
+      if (req.url.startsWith('/slots/0')) {
+        const action = /action=(\w+)/.exec(req.url)[1];
+        log.push(`${action}:${b.filename}`);
+        if (action === 'save') files[b.filename] = slot;
+        else if (files[b.filename] == null) { res.writeHead(404); res.end('{}'); return; } else slot = files[b.filename];
+        res.writeHead(200); res.end('{}');
+        return;
+      }
+      const prompt = JSON.stringify([b.tools || [], b.messages]).replace(/]]$/, ''); // tools come first, as in the real template
+      let same = 0;
+      while (same < slot.length && same < prompt.length && slot[same] === prompt[same]) same++;
+      const timings = { cache_n: same, prompt_n: prompt.length - same };
+      log.push(`ask:${b.messages[b.messages.length - 1].content.length ? 'text' : ''}:${timings.prompt_n}`);
+      setTimeout(() => {
+        slot = prompt;
+        if (!b.stream) { res.writeHead(200); res.end(JSON.stringify({ timings, choices: [{ message: { content: '{"expression":"1+1"}' } }] })); return; }
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.end(`data: ${JSON.stringify({ choices: [{ delta: { content: 'I’m Bigfoot.' }, finish_reason: 'stop' }], timings })}\n\ndata: [DONE]\n\n`);
+      }, 150);
+    });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const endpoint = { baseUrl: `http://127.0.0.1:${server.address().port}`, apiKey: 'k', model: 'qwen' };
+  const runtime = { endpoint, busy: 0, slotHolds: null, ensure: async () => endpoint, touch() {}, pruneCache() {}, preparing: null };
+  for (const k of ['exclusive', 'use', 'slot']) runtime[k] = LocalRuntime.prototype[k];
+  const tools = [{ name: 'read_screen', description: 'Read the screen as a list.', input_schema: { type: 'object', properties: {} } }];
+  const newProvider = () => new LocalProvider({ runtime, model: 'qwen', system: 'You are Bigfoot. '.repeat(400), tools, screen: { width: 1000, height: 1000 } });
+  try {
+    const p = newProvider();
+    p.onText = () => {};
+    // Tonight's order: the instructions are being read when a math reading comes in.
+    const warming = p.warm();
+    const math = askLocal(runtime, { prompt: 'Read this math', image: 'aGk=' });
+    await Promise.all([warming, math]);
+    const file = p.prefixFile();
+    assert.match(files[file], /You are Bigfoot/); // the instructions were saved, not the math reading
+    assert.doesNotMatch(files[file], /Read this math/);
+
+    // The next question puts the instructions back and reads only itself.
+    p.startTask();
+    p.addUserMessage('What is your name?');
+    await p.step();
+    const last = log.filter((l) => l.startsWith('ask:')).pop();
+    assert.ok(Number(last.split(':')[2]) < 200, `read ${last}`);
+
+    // A wrong saved copy (an older version's) is noticed and replaced the first time it's used.
+    files[file] = 'something else entirely';
+    runtime.slotHolds = null;
+    const q = newProvider();
+    q.onText = () => {};
+    assert.equal(await q.warm(), false); // it had to read them
+    assert.match(files[file], /You are Bigfoot/);
+    assert.equal(await newProvider().warm(), true); // and from then on they're restored
+  } finally {
+    server.close();
+  }
+});

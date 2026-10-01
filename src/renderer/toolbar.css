@@ -20,6 +20,9 @@ body { display: flex; flex-direction: column; align-items: center; justify-conte
 .tray button svg .fill { fill: currentColor; stroke: none; }
 .tray button:hover, .tray button:focus-visible { background: rgba(255, 255, 255, 0.09); color: #fff; outline: none; }
 .tray button:active { transform: scale(0.92); }
+.tray button:disabled { opacity: 0.32; cursor: default; pointer-events: auto; }
+.tray button:disabled:hover { background: transparent; color: inherit; }
+.tray button:disabled:active { transform: none; }
 .tray button[aria-pressed='true'] { background: rgba(10, 132, 255, 0.24); color: #fff; }
 .tray button[aria-pressed='true'] svg { stroke: #7db2ff; animation: live 1.4s ease-in-out infinite; }
 @keyframes live { 50% { opacity: 0.45; } }

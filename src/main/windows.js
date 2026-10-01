@@ -96,6 +96,13 @@ class WindowManager {
     }
   }
 
+  /** While the AI gets ready the tray's tools are greyed out (null: ready). */
+  setToolsBlocked(why) {
+    if (why === this.toolsBlocked) return;
+    this.toolsBlocked = why;
+    if (this.toolTray && !this.toolTray.isDestroyed()) send(this.toolTray, 'tools-blocked', why);
+  }
+
   /** Clicks pass through to the apps below but hover still reaches the page (for the ink toolbar). */
   setOverlayPassthrough(displayId, on) {
     const w = this.overlays.get(displayId);
@@ -144,6 +151,7 @@ class WindowManager {
     const reveal = () => {
       if (win.isDestroyed()) return;
       send(win, 'voice-mode', Boolean(this.voiceMode));
+      send(win, 'tools-blocked', this.toolsBlocked || null);
       send(win, 'toolbar:show');
       win.show();
       win.focus();

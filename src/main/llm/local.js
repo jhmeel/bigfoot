@@ -83,36 +83,59 @@ class LocalProvider extends OpenAIProvider {
   }
 
   /**
-   * Before each request, put the saved instructions back (≈0.3 s). Stopping a request part-way
-   * through leaves the model holding only part of them, and the next request then re-read the rest:
-   * 344 s instead of 15 s on the test laptop.
+   * Put the saved instructions back into the model (≈0.3 s) when something else used it since:
+   * a math reading, or a request stopped part-way (which leaves only part of them, and the next
+   * request re-read the rest: 344 s instead of 15 s on the test laptop). Runs inside the queue.
    */
   async restorePrefix() {
-    try {
-      await this.endpoint();
-      return await this.runtime.slot('restore', this.prefixFile());
-    } catch {
-      return false;
-    }
+    const file = this.prefixFile();
+    if (this.runtime.slotHolds === file) return true;
+    const ok = await this.runtime.slot('restore', file);
+    this.runtime.slotHolds = ok ? file : null;
+    return ok;
+  }
+
+  /**
+   * Save what the model holds as the instructions, but only when this request really had to read
+   * them (a restore that matched reads just a few words). A saved file that doesn't match, from
+   * an older version or saved at the wrong moment, is replaced the first time it shows.
+   */
+  async savePrefixIfRead(file, timings, threshold) {
+    if (!timings || !(timings.prompt_n > threshold)) return false;
+    if (!(await this.runtime.slot('save', file))) return false;
+    this.runtime.pruneCache(file);
+    this.runtime.slotHolds = file;
+    return true;
   }
 
   async warm(onProgress = () => {}) {
-    const { url, key } = await this.endpoint();
-    const file = this.prefixFile();
-    const restored = await this.runtime.slot('restore', file);
-    const res = await localPost(`${url}/chat/completions`, {
-      key,
-      waiting: () => true, // never cut off: this reading has to happen once, however slow the PC
-      body: { model: this.model, messages: [this.messages[0], { role: 'user', content: 'hi' }], tools: this.tools, max_tokens: 1, stream: true, return_progress: true },
+    await this.endpoint();
+    return this.queue(async ({ baseUrl, apiKey }) => {
+      const file = this.prefixFile();
+      const restored = await this.restorePrefix();
+      const res = await localPost(`${baseUrl}/v1/chat/completions`, {
+        key: apiKey,
+        waiting: () => true, // never cut off: this reading has to happen once, however slow the PC
+        body: { model: this.model, messages: [this.messages[0], { role: 'user', content: 'hi' }], tools: this.tools, max_tokens: 1, stream: true, return_progress: true },
+      });
+      if (!res.ok) throw new ProviderError(`${this.label} couldn’t prepare (${res.status}).`, 'Local AI problem');
+      const body = await readStream(res, () => {}, onProgress);
+      this.runtime.slotHolds = file;
+      if (body.timings) this.prefixTokens = (body.timings.prompt_n || 0) + (body.timings.cache_n || 0);
+      // Saved while nothing else can use the model, so it's the instructions that get saved.
+      const read = await this.savePrefixIfRead(file, body.timings, 64);
+      return restored && !read;
     });
-    if (!res.ok) throw new ProviderError(`${this.label} couldn’t prepare (${res.status}).`, 'Local AI problem');
-    await readStream(res, () => {}, onProgress);
-    if (!restored && await this.runtime.slot('save', file)) this.runtime.pruneCache(file);
-    return restored;
   }
 
   /** Streams the answer so it can be shown while it's being written. */
   async request(signal) {
+    const body = await this.requestBody(signal);
+    this.lastTimings = body.timings || null;
+    return body;
+  }
+
+  async requestBody(signal) {
     if (!this.onText) return super.request(signal);
     const { url, key } = await this.endpoint();
     let res;
@@ -196,18 +219,39 @@ class LocalProvider extends OpenAIProvider {
     }));
   }
 
+  /** The model's queue (one request at a time); a bare runtime without one just runs it. */
+  queue(fn) {
+    return this.runtime.exclusive ? this.runtime.exclusive(fn) : this.runtime.use(fn);
+  }
+
+  /** One request, in the queue: the saved instructions are put back first if anything else used the model. */
+  queuedStep(signal) {
+    return this.queue(async () => {
+      await this.restorePrefix();
+      try {
+        const out = await super.step(signal);
+        // The instructions had to be read again (the saved copy didn't match): save the right one.
+        await this.savePrefixIfRead(this.prefixFile(), this.lastTimings, Math.max(1500, this.prefixTokens || 0) * 0.6);
+        return out;
+      } catch (err) {
+        this.runtime.slotHolds = null; // stopped or failed part-way: what's left in the model is partial
+        throw err;
+      }
+    });
+  }
+
   async step(signal) {
     let out;
     try {
-      out = await this.runtime.use(() => super.step(signal));
+      out = await this.queuedStep(signal);
     } catch (err) {
       if (signal && signal.aborted) throw err;
       if (err instanceof ProviderError && /context/i.test(err.message)) {
         this.shrinkHistory();
-        out = await this.runtime.use(() => super.step(signal));
+        out = await this.queuedStep(signal);
       } else if (err instanceof ProviderError && (err.title === 'Local AI stopped' || err.title === 'You’re offline')) {
         this.runtime.stop(); // the server died mid-request: restart once
-        out = await this.runtime.use(() => super.step(signal));
+        out = await this.queuedStep(signal);
       } else {
         throw err;
       }
@@ -276,6 +320,7 @@ async function readStream(res, onText, onProgress = () => {}) {
     if (chunk.prompt_progress) { onProgress(chunk.prompt_progress); return; } // reading the request, batch by batch
     if (chunk.model) model = chunk.model;
     if (chunk.usage) usage = chunk.usage;
+    if (chunk.timings) timings = chunk.timings; // how much was read fresh vs. reused (prompt_n, cache_n)
     const choice = chunk.choices && chunk.choices[0];
     if (!choice) return;
     if (choice.finish_reason) finish = choice.finish_reason;
@@ -289,6 +334,7 @@ async function readStream(res, onText, onProgress = () => {}) {
       if (tc.function && tc.function.arguments) calls[i].function.arguments += tc.function.arguments;
     }
   };
+  let timings = null;
   for await (const bytes of res.body) {
     buffer += decoder.decode(bytes, { stream: true });
     const lines = buffer.split(/\r?\n/);
@@ -300,6 +346,7 @@ async function readStream(res, onText, onProgress = () => {}) {
   return {
     model,
     usage,
+    timings,
     choices: [{ finish_reason: finish, message: { role: 'assistant', content: content || null, ...(toolCalls.length ? { tool_calls: toolCalls } : {}) } }],
   };
 }
@@ -310,7 +357,8 @@ async function readStream(res, onText, onProgress = () => {}) {
  * up at five.
  */
 async function askLocal(runtime, { prompt, image, maxTokens = 300, signal }) {
-  return runtime.use(async (e) => {
+  return (runtime.exclusive || runtime.use).call(runtime, async (e) => {
+    runtime.slotHolds = null; // this replaces what the model holds; the next task restores its instructions
     const content = [...(image ? [{ type: 'image_url', image_url: { url: `data:image/png;base64,${image}` } }] : []), { type: 'text', text: prompt }];
     let res;
     try {
