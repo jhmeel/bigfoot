@@ -11,6 +11,8 @@ const { CostTracker } = require('./costs');
 const { Agent } = require('./agent');
 const { ComputerExecutor, READ_ONLY } = require('./computer');
 const { ACTIONS: COMPUTER_ACTIONS } = require('./llm/computer-schema');
+const { ScreenReader } = require('./screenread');
+const SCREEN_ACTIONS = new Set(['click_element', 'type_into', 'scroll_screen', 'drag_element']);
 const { PluginRegistry } = require('./plugins/registry');
 const { PluginManager } = require('./plugins/manage');
 const { WindowManager } = require('./windows');
@@ -83,8 +85,9 @@ async function start() {
     input,
     pointAt: (p) => flyTo({ ...p, displayId: agent.target.display.id }),
   });
+  const ui = new ScreenReader({ input, pointAt: (p) => flyTo({ ...p, displayId: agent.target.display.id }) });
   const agent = new Agent({
-    settings, input, computer, plugins, costs, runtime, isOnline,
+    settings, input, computer, plugins, costs, runtime, ui, isOnline,
     hooks: {
       state: (s) => { if (controller.state !== s) controller.setState(s); },
       progress: (text) => {
@@ -95,7 +98,7 @@ async function start() {
       action: (name, inp) => {
         // The window is invisible in screenshots but would still catch the AI's clicks, so it
         // steps aside only when the AI starts using the mouse or keyboard, never for a chat.
-        if (COMPUTER_ACTIONS.includes(name) && !READ_ONLY.has(name)) windows.hidePanel();
+        if ((COMPUTER_ACTIONS.includes(name) && !READ_ONLY.has(name)) || SCREEN_ACTIONS.has(name)) windows.hidePanel();
         logger.audit('action', { name, input: name === 'type' || name === 'write_file' ? { chars: String(inp.text || inp.content || '').length, path: inp.path } : inp });
         controller.panelLog('action', actionLabel(name, inp));
         activity.add('action', `${name} ${actionArgs(name, inp)}`.trim());
@@ -292,6 +295,12 @@ function actionLabel(name, inp) {
     create_folder: `Created ${i.path}`,
     delete_path: `Moved ${i.path} to the Recycle Bin`,
     open_path: `Opened ${i.path}`,
+    read_screen: 'Read the screen',
+    click_element: `Clicked element ${i.id}`,
+    type_into: `Typed into element ${i.id}`,
+    scroll_screen: `Scrolled ${i.direction}`,
+    drag_element: `Dragged element ${i.id} to ${i.to}`,
+    highlight_element: `Highlighted element ${i.id}`,
   };
   return labels[name] || name.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
 }

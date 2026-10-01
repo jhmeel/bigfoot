@@ -6,11 +6,15 @@ const { systemPrompt } = require('./prompt');
 const llm = require('./llm');
 const { ProviderError } = require('./llm/errors');
 const { StoppedError, READ_ONLY, isRisky, describeAction, sleep } = require('./computer');
+const { findElement } = require('./uicommand');
 
 const HALT_TEXT = 'Not executed: an earlier action in this turn failed.';
 const STOPPED_TEXT = 'Not executed: the user stopped the agent.';
 const TRUNCATED_TEXT = 'Not executed: your response hit the length limit, so this call may be incomplete. Issue it again.';
 const LOOKING = new Set(['screenshot', 'zoom']);
+// Asking for something done on screen (as opposed to a question or a chat): the screen list goes
+// with the request, which saves the model a whole step of asking for it.
+const ON_SCREEN = /\b(?:click|tap|press|select|choose|pick|check|uncheck|tick|type|enter|fill|write in|scroll|drag|move|open the|close the|go to the|play the|download|sign in|log in|search (?:for|on this)|find (?:the|a)|switch to|expand|collapse|highlight|show me where|where is|which button|what(?:'s| is) on (?:the |my )?screen)\b/i;
 
 class AgentError extends ProviderError {}
 
@@ -46,10 +50,13 @@ class Agent {
    *   costs       CostTracker
    *   hooks       { state, progress, action, approve, notice, terminal, draw }
    *   runtime     LocalRuntime (runs the local model)
+   *   ui          ScreenReader (the screen as a list of elements)
    *   isOnline    () => boolean
    */
-  constructor({ settings, input, computer, plugins, costs, hooks, runtime = null, isOnline = () => true }) {
-    Object.assign(this, { settings, input, computer, plugins, costs, hooks, runtime, isOnline });
+  constructor({ settings, input, computer, plugins, costs, hooks, runtime = null, ui = null, isOnline = () => true }) {
+    Object.assign(this, { settings, input, computer, plugins, costs, hooks, runtime, ui, isOnline });
+    this.task = '';
+    this.visual = false; // the request is about a drawing or a marked area: keep real screenshots
     this.provider = null;
     this.providerKey = '';
     this.target = null;
@@ -127,7 +134,9 @@ class Agent {
       for (const call of calls) {
         if (this.abort.signal.aborted) break;
         this.hooks.action(call.name, call.input);
-        const content = await this.plugins.run(call.name, call.input, this.pluginContext(this.abort.signal));
+        const content = call.computer
+          ? await this.runComputer(call.name, call.input, this.abort.signal)
+          : await this.plugins.run(call.name, call.input, this.pluginContext(this.abort.signal));
         if (typeof content === 'string') this.hooks.terminal('result', content);
         results.push(content);
       }
@@ -135,6 +144,38 @@ class Agent {
     } finally {
       this.running = false;
       this.abort = null;
+    }
+  }
+
+  /**
+   * A simple on-screen command ("click Sign in", "scroll down", "press Enter") done from the screen
+   * list, without the model. Resolves to the reply, or null when the model has to decide (no
+   * element by that name, or several).
+   */
+  async runUiCommand(cmd, text) {
+    if (!this.ui || !this.target) return null;
+    this.task = text;
+    this.visual = false;
+    switch (cmd.kind) {
+      case 'click': {
+        const snap = await this.ui.read(this.target);
+        const item = findElement(snap, cmd.what);
+        if (!item) return null;
+        this.ui.shown = new Map([[item.id, item]]);
+        const [result] = await this.runDirect([{ name: 'click_element', input: { id: item.id } }]);
+        return /Nothing on screen changed/.test(String(result)) ? `I clicked ${item.name}, but nothing seemed to happen.` : `Clicked ${item.name}.`;
+      }
+      case 'scroll':
+        await this.runDirect([{ name: 'scroll_screen', input: { direction: cmd.dir, amount: cmd.amount } }]);
+        return cmd.reply;
+      case 'key':
+        await this.runDirect([{ name: 'key', computer: true, input: { text: cmd.keys } }]);
+        return cmd.reply;
+      case 'type':
+        await this.runDirect([{ name: 'type', computer: true, input: { text: cmd.text } }]);
+        return cmd.reply;
+      default:
+        return null;
     }
   }
 
@@ -147,6 +188,8 @@ class Agent {
     this.abort = new AbortController();
     this.costs.startTask();
     this.hooks.terminal('task', task);
+    this.task = task;
+    this.visual = Boolean(region || drawing);
     try {
       let provider = this.ensureProvider();
       this.hooks.terminal('info', `Using ${llm.describe(this.settings, provider.id)}`);
@@ -174,7 +217,16 @@ class Agent {
             [full.toString('base64'), crop.toString('base64')]);
         };
       } else {
-        request = (p) => p.addUserMessage(task);
+        let screenNote = '';
+        if (this.ui && ON_SCREEN.test(task)) {
+          try {
+            const snap = await this.ui.read(this.target);
+            screenNote = `\n\n(${this.ui.describe(snap, task, { limit: this.listLimit(provider), point: this.modelPoint(provider) })})`;
+          } catch (err) {
+            this.hooks.terminal('error', `Couldn’t read the screen: ${err.message}`);
+          }
+        }
+        request = (p) => p.addUserMessage(task + screenNote);
       }
       if (provider.startTask) provider.startTask(); // keep earlier turns lean (local model)
       if (provider.restorePrefix) await provider.restorePrefix(); // full saved instructions, even after a stop
@@ -297,22 +349,52 @@ class Agent {
       }
     }
 
-    // If a batch of computer actions didn't end with a look at the screen, attach one.
+    // If a batch of computer actions didn't end with a look at the screen, attach one: for the local
+    // model the screen list (seconds), for others a screenshot.
     const lastCall = calls[calls.length - 1];
     const last = results[results.length - 1];
     if (last && !failed && !truncated && !last.isError && lastCall.computer && !LOOKING.has(lastCall.name)) {
-      try {
-        const text = typeof last.content === 'string' ? last.content : 'OK';
-        last.content = [{ type: 'text', text }, pngItem(await this.target.screenshot())];
-      } catch (err) {
-        this.hooks.terminal('error', `Follow-up screenshot failed: ${err.message}`);
+      const text = typeof last.content === 'string' ? last.content : 'OK';
+      const list = this.textScreen(provider) ? await this.screenList(provider).catch(() => null) : null;
+      if (list) last.content = `${text}\n${list}`;
+      else {
+        try {
+          last.content = [{ type: 'text', text }, pngItem(await this.target.screenshot())];
+        } catch (err) {
+          this.hooks.terminal('error', `Follow-up screenshot failed: ${err.message}`);
+        }
       }
     }
     return results;
   }
 
+  /** The local model reads the screen as a list; a screenshot costs it a minute or more. */
+  textScreen(provider) {
+    return Boolean(this.ui && provider && provider.id === 'local' && !this.visual);
+  }
+
+  listLimit(provider) {
+    return provider && provider.id === 'local' ? 18 : 40;
+  }
+
+  /** Screenshot pixels → the model's own coordinates (the local model's 0-1000 grid). */
+  modelPoint(provider) {
+    return (p) => (provider && provider.toGrid ? provider.toGrid(p) : p);
+  }
+
+  async screenList(provider) {
+    const snap = await this.ui.read(this.target);
+    const list = this.ui.describe(snap, this.task, { limit: this.listLimit(provider), point: this.modelPoint(provider) });
+    return snap.items.length ? list : null;
+  }
+
   async runComputer(name, input, signal) {
     this.computer.validate(this.target, name, input);
+    // The local model asked to look: the list answers in a second; zoom still shows real pixels.
+    if (name === 'screenshot' && this.textScreen(this.provider)) {
+      const list = await this.screenList(this.provider).catch(() => null);
+      if (list) return `${list}\n(This is the screen as a list. To see actual pixels of an area, use the zoom action.)`;
+    }
     if (!READ_ONLY.has(name)) {
       await this.guardSensitiveWindow();
       const mode = this.settings.get('approvalMode');
@@ -336,6 +418,12 @@ class Agent {
       draw: (shape) => this.hooks.draw({ ...shape, displayId: this.target.display.id }),
       ink: (op) => this.hooks.ink({ ...op, displayId: this.target.display.id }),
       sleep: (ms) => sleep(ms, signal),
+      // For the screen tools (./plugins/builtin/screen.js)
+      ui: this.ui,
+      task: this.task,
+      listLimit: this.listLimit(this.provider),
+      modelPoint: this.modelPoint(this.provider),
+      guard: async () => { await this.guardSensitiveWindow(); await this.failSafe(); },
     };
   }
 
