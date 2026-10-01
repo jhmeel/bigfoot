@@ -1,18 +1,19 @@
 'use strict';
 // Downloads the speech recognizer that ships inside the app (whisper.cpp and its English model)
-// into vendor/speech, verifying each file's SHA-256. Runs before `npm start` and `npm run dist`;
+// into vendor/speech, and the handwritten-math reader into vendor/math, verifying each file's SHA-256. Runs before `npm start` and `npm run dist`;
 // does nothing when the files are already there.
 
 const { execFileSync } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { SPEECH } = require('../src/main/local/catalog');
+const { SPEECH, MATH } = require('../src/main/local/catalog');
 
 const DEST = path.join(__dirname, '..', 'vendor', 'speech');
 const SERVER = path.join(DEST, 'whisper', 'whisper-server.exe');
 const model = SPEECH.find((f) => f.speech);
 const MODEL = path.join(DEST, model.name);
+const MATH_DEST = path.join(__dirname, '..', 'vendor', 'math');
 
 const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
@@ -30,6 +31,11 @@ async function main() {
   if (process.platform !== 'win32') return;
   fs.mkdirSync(DEST, { recursive: true });
   if (!fs.existsSync(MODEL) || fs.statSync(MODEL).size !== model.size) await fetchVerified(model, MODEL);
+  fs.mkdirSync(MATH_DEST, { recursive: true });
+  for (const f of MATH) {
+    const file = path.join(MATH_DEST, f.name);
+    if (!fs.existsSync(file) || fs.statSync(file).size !== f.size) await fetchVerified(f, file);
+  }
   if (!fs.existsSync(SERVER)) {
     const runtime = SPEECH.find((f) => f.speechRuntime);
     const zip = path.join(DEST, runtime.name);

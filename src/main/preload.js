@@ -16,7 +16,7 @@ const INVOKE = new Set([
 ]);
 const SEND = new Set([
   'overlay:ready', 'overlay:fly-done', 'overlay:region', 'overlay:region-ask', 'panel:ready',
-  'engine:ready', 'engine:reply', 'engine:level', 'engine:vad', 'ink:passthrough', 'ink:reply', 'ink:state',
+  'engine:ready', 'engine:reply', 'engine:level', 'engine:vad', 'ink:passthrough', 'ink:reply', 'ink:state', 'loader:pointer',
 ]);
 const RECEIVE = new Set([
   'cursor', 'state', 'bubble', 'bubble-live', 'fly', 'banner', 'welcome', 'settings', 'log', 'log-live', 'log-image', 'usage', 'level',

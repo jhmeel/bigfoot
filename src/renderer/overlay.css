@@ -126,6 +126,7 @@ body.selecting #select-layer { pointer-events: auto; cursor: crosshair; backgrou
 @keyframes lasso-scan { to { stroke-dashoffset: -960; } }
 
 #region-ask {
+  pointer-events: auto; /* the overlay page is click-through; the box must take clicks to be typed into */
   position: fixed; z-index: 30; display: flex; align-items: center; gap: 4px; width: 340px; max-width: calc(100vw - 32px);
   padding: 5px 5px 5px 14px; border-radius: 22px; background: rgba(22, 24, 29, 0.96);
   border: 1px solid rgba(120, 170, 255, 0.45); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 0 4px rgba(51, 128, 255, 0.12);
@@ -258,6 +259,10 @@ body.math #math-layer { display: block; pointer-events: auto; cursor: crosshair;
 #ai-loader[data-state='failed'] .ail-bar { display: none; }
 .ail-sub { color: #9aa3ad; font-size: 11.5px; }
 .ail-sub:empty { display: none; }
+#ai-loader.show { pointer-events: auto; }
+.ail-close { flex: none; width: 20px; height: 20px; margin: -3px -5px -3px 2px; padding: 0; border: 0; border-radius: 6px;
+  background: transparent; color: #9aa3ad; font: 400 16px/20px var(--font); cursor: pointer; }
+.ail-close:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
 .math-answer[data-state='right'] { color: #32d74b; text-shadow: 0 0 12px rgba(50, 215, 75, 0.7), 0 2px 4px rgba(0, 0, 0, 0.6); }
 .math-answer[data-state='wrong'] { color: #ff6961; text-shadow: 0 0 12px rgba(255, 69, 58, 0.7), 0 2px 4px rgba(0, 0, 0, 0.6); }
 .math-answer[data-state='wrong']::before { content: '✗ '; font-size: 0.7em; }

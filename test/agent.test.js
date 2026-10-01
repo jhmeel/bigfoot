@@ -17,6 +17,10 @@ intentTest('everyday commands run instantly without the model; anything more goe
   const split = matchIntent('open chrome and find the nearest restaurant and browse their menu');
   intentAssert.equal(split.calls[0].input.url, 'https://www.google.com/search?q=the+nearest+restaurant');
   intentAssert.match(split.followUp, /^browse their menu/);
+  const song = matchIntent('open chrome and browse the best afrobeat song and download it into my device');
+  intentAssert.equal(song.calls[0].input.url, 'https://www.google.com/search?q=the+best+afrobeat+song');
+  intentAssert.match(song.followUp, /^download it into my device .*free and legally/);
+  intentAssert.equal(url('search for weather in lagos on google'), 'https://www.google.com/search?q=weather+in+lagos');
   for (const t of ['open notepad and write a poem', 'find my resume file', 'what is the weather', 'hi']) intentAssert.equal(matchIntent(t), null, t);
 });
 

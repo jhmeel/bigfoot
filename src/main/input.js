@@ -166,6 +166,11 @@ class InputHelper extends EventEmitter {
     return Buffer.from(await this.send('mathink', Buffer.from(payload, 'utf8').toString('base64')), 'base64').toString('utf8');
   }
 
+  /** Bring one of Bigfoot's own windows to the foreground (it needs the keyboard). */
+  async activate(hwnd) {
+    return (await this.send('activate', String(hwnd))) === '1';
+  }
+
   async windowTitle() {
     return Buffer.from(await this.send('title'), 'base64').toString('utf8');
   }

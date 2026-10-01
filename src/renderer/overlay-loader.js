@@ -12,6 +12,11 @@
   const sub = card.querySelector('.ail-sub');
   let hideTimer = null;
   let shownLoading = false;
+  let dismissed = false; // closed with ×: stays closed unless loading fails
+  const pointer = (state) => api.send('loader:pointer', state);
+  card.querySelector('.ail-close').addEventListener('click', () => { dismissed = true; hide(); });
+  card.addEventListener('mouseenter', () => pointer('over'));
+  card.addEventListener('mouseleave', () => pointer(card.classList.contains('show') ? 'show' : 'hide'));
 
   const clock = (ms) => {
     const s = Math.max(0, Math.round((ms || 0) / 1000));
@@ -20,7 +25,16 @@
 
   function hide(after = 0) {
     clearTimeout(hideTimer);
-    hideTimer = setTimeout(() => { card.classList.remove('show'); shownLoading = false; }, after);
+    hideTimer = setTimeout(() => {
+      if (card.classList.contains('show')) pointer('hide'); // clicks pass straight through again
+      card.classList.remove('show');
+      shownLoading = false;
+    }, after);
+  }
+
+  function show() {
+    if (!card.classList.contains('show')) pointer('show'); // hover reaches the card; clicks elsewhere pass through
+    card.classList.add('show');
   }
 
   function render(status) {
@@ -29,6 +43,7 @@
     const voiceText = voice.state === 'ready' ? 'Voice ready' : voice.state === 'loading' ? 'Loading voice…' : voice.state === 'failed' ? 'Voice unavailable' : '';
     card.dataset.state = ai.state === 'preparing' ? 'loading' : ai.state;
     const busy = ai.state === 'loading' || ai.state === 'preparing';
+    if (dismissed && ai.state !== 'failed') { hide(); return; }
     if (busy || (voice.state === 'loading' && ai.state !== 'failed')) {
       clearTimeout(hideTimer);
       shownLoading = true;
@@ -40,14 +55,14 @@
       const note = ai.state === 'preparing' ? `One time only: reading its instructions and tools · ${clock(ai.elapsed)}`
         : ai.state === 'loading' && ai.elapsed > 20000 ? `${clock(ai.elapsed)} · a busy PC takes longer` : '';
       sub.textContent = [note, busy ? voiceText : ''].filter(Boolean).join(' · '); // the title already says it when only voice is loading
-      card.classList.add('show');
+      show();
     } else if (ai.state === 'failed') {
       clearTimeout(hideTimer);
       text.textContent = 'The AI couldn’t load';
       pct.textContent = '';
       bar.style.width = '0%';
       sub.textContent = `${ai.label} Open Bigfoot to try again.`;
-      card.classList.add('show');
+      show();
       hide(15000);
     } else if (ai.state === 'ready' && shownLoading) {
       text.textContent = 'Bigfoot is ready';

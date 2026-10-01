@@ -3,7 +3,7 @@
 // regardless of image size, so coordinates are converted to and from screenshot pixels here.
 
 const crypto = require('crypto');
-const { OpenAIProvider, ask } = require('./openai');
+const { OpenAIProvider } = require('./openai');
 const { computerFunction } = require('./computer-schema');
 const { ProviderError } = require('./errors');
 const { localPost } = require('./localhttp');
@@ -60,9 +60,28 @@ class LocalProvider extends OpenAIProvider {
    * saved to disk, so after a restart it's restored in seconds instead of read again (100 s on a
    * laptop without a graphics card).
    */
+  /** Where the read instructions and tools are saved. */
+  prefixFile() {
+    return `${this.model}-${crypto.createHash('sha1').update(JSON.stringify([this.messages[0], this.tools])).digest('hex').slice(0, 16)}.bin`;
+  }
+
+  /**
+   * Before each request, put the saved instructions back (≈0.3 s). Stopping a request part-way
+   * through leaves the model holding only part of them, and the next request then re-read the rest:
+   * 344 s instead of 15 s on the test laptop.
+   */
+  async restorePrefix() {
+    try {
+      await this.endpoint();
+      return await this.runtime.slot('restore', this.prefixFile());
+    } catch {
+      return false;
+    }
+  }
+
   async warm(onProgress = () => {}) {
     const { url, key } = await this.endpoint();
-    const file = `${this.model}-${crypto.createHash('sha1').update(JSON.stringify([this.messages[0], this.tools])).digest('hex').slice(0, 16)}.bin`;
+    const file = this.prefixFile();
     const restored = await this.runtime.slot('restore', file);
     const res = await localPost(`${url}/chat/completions`, {
       key,
@@ -268,11 +287,29 @@ async function readStream(res, onText, onProgress = () => {}) {
   };
 }
 
+/**
+ * One question about one picture (the math tool's "Read with AI"). Over plain HTTP like every local
+ * request: reading a picture takes over two minutes on a PC without a graphics card, and fetch gives
+ * up at five.
+ */
 async function askLocal(runtime, { prompt, image, maxTokens = 300, signal }) {
-  return runtime.use((e) => ask({
-    url: `${e.baseUrl}/v1`, key: e.apiKey, model: e.model, label: 'The local AI', prompt, image, signal, timeoutMs: LOCAL_TIMEOUT_MS,
-    extras: { ...SAMPLING, temperature: 0, max_tokens: maxTokens, max_completion_tokens: undefined },
-  }));
+  return runtime.use(async (e) => {
+    const content = [...(image ? [{ type: 'image_url', image_url: { url: `data:image/png;base64,${image}` } }] : []), { type: 'text', text: prompt }];
+    let res;
+    try {
+      res = await localPost(`${e.baseUrl}/v1/chat/completions`, {
+        key: e.apiKey,
+        signal,
+        body: { model: e.model, messages: [{ role: 'user', content }], ...SAMPLING, temperature: 0, max_tokens: maxTokens },
+      });
+    } catch (err) {
+      if (signal && signal.aborted) throw err;
+      throw new ProviderError(err.stalled ? 'The local AI stopped responding. Your PC may be too busy.' : 'The local AI isn’t running. Try again in a moment.', 'Local AI problem');
+    }
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ProviderError(`The local AI couldn’t read that (${(body.error && body.error.message) || res.status}).`, 'Local AI problem');
+    return String((body.choices && body.choices[0] && body.choices[0].message && body.choices[0].message.content) || '');
+  });
 }
 
 module.exports = { LocalProvider, askLocal, readStream, GRID, GRID_NOTE, ACTION_NOTE, localComputerFunction };

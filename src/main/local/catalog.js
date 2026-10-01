@@ -57,6 +57,14 @@ const SPEECH = [
   { ...hf('ggerganov/whisper.cpp', '5359861c739e955e79d9a303bcbc70fb988958b1', 'ggml-base.en-q8_0.bin', 81781811, 'a4d4a0768075e13cfd7e19df3ae2dbc4a68d37d36a7dad45e8410c9a34f8c87e'), speech: true },
 ];
 
+// Handwritten math reader shipped inside the app: Pix2Text MFR 1.5 (MIT), about 1 s per line on a CPU.
+const MATH_REV = '1cef9f0bdcd6a4c63df7de1311fb0894593340cc';
+const MATH = [
+  hf('breezedeus/pix2text-mfr-1.5', MATH_REV, 'encoder_model.onnx', 87510770, '080a3f660f08bc9ebcacdd96e34be6b6400f8c7e62d7cd0dd8251badc37f610b'),
+  hf('breezedeus/pix2text-mfr-1.5', MATH_REV, 'decoder_model.onnx', 32026253, '917deb98e91a0453c5f234f58a0f32f9fb037de8527c7eb4ed394daf9e692f2a'),
+  hf('breezedeus/pix2text-mfr-1.5', MATH_REV, 'tokenizer.json', 113168, '4ffbeb2143e6a38324bb6111b7a8109530d38a076a8439aa5777535f0a32758a'),
+];
+
 function runtimeFor(arch = process.arch) {
   const r = RUNTIMES[arch === 'arm64' ? 'arm64' : 'x64'];
   return { ...r, url: `${GH}/${r.name}`, tag: RUNTIME_TAG, runtime: true };
@@ -109,4 +117,4 @@ function recommend(hw) {
   return { pick, options };
 }
 
-module.exports = { MODELS, RETIRED, RUNTIME_TAG, WHISPER_TAG, SPEECH, runtimeFor, modelById, filesFor, downloadBytes, recommend, GB };
+module.exports = { MODELS, RETIRED, RUNTIME_TAG, WHISPER_TAG, SPEECH, MATH, runtimeFor, modelById, filesFor, downloadBytes, recommend, GB };

@@ -81,7 +81,7 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
   // ---- tool tray and math
   handle('toolbar:pick', (tool) => { controller.pickTool(tool); return true; });
   handle('math:read', (png) => controller.readMath(png));
-  handle('math:ink', (strokes) => controller.readMathInk(strokes));
+  handle('math:ink', (strokes, image) => controller.readMathInk(strokes, image));
   handle('math:system', (expressions) => controller.solveMathSystem(expressions));
   handle('math:calc', (text, angle) => controller.calculate(text, angle === 'rad' ? 'rad' : 'deg'));
   handle('math:share', (text) => {
