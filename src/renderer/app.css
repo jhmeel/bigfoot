@@ -143,3 +143,39 @@ body.running .send .i-stop { display: block; }
   .row .control { width: 100%; justify-content: flex-end; }
   .row .control .field, .row .control select.field { width: 100%; }
 }
+
+/* ---------------------------------------------------------------- Terminal tabs (real shells) */
+.terminal-pane { display: flex; flex-direction: column; }
+.term-tabs { display: flex; align-items: center; gap: 2px; height: 38px; padding: 0 6px; background: var(--surface-1); border-bottom: 1px solid var(--hairline); flex: none; overflow-x: auto; overflow-y: hidden; }
+#term-tablist { display: contents; }
+.term-tab { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 8px 0 10px; border-radius: 7px; border: 0; background: transparent; color: var(--text-2); font: 500 12px var(--font); cursor: pointer; white-space: nowrap; flex: none; }
+.term-tab:hover { background: rgba(255, 255, 255, 0.05); color: var(--text-1); }
+.term-tab.active { background: var(--surface-3); color: var(--text-1); }
+.term-tab .term-x { width: 16px; height: 16px; border-radius: 4px; display: grid; place-items: center; color: var(--text-3); opacity: 0; }
+.term-tab:hover .term-x, .term-tab.active .term-x { opacity: 1; }
+.term-tab .term-x:hover { background: rgba(255, 255, 255, 0.1); color: var(--text-1); }
+.term-tab .term-x svg { width: 10px; height: 10px; }
+.term-dot { width: 7px; height: 7px; border-radius: 50%; background: #34d399; flex: none; }
+.term-dot.activity { background: #70b8ff; }
+.term-dot.ai { background: #a78bfa; }
+.term-dot.busy { animation: blink 1s steps(1) infinite; }
+.term-dot.ended { background: #4d5552; }
+.term-add-wrap { position: relative; flex: none; }
+.term-add { width: 28px; height: 28px; border-radius: 7px; border: 0; background: transparent; color: var(--text-2); display: grid; place-items: center; cursor: pointer; }
+.term-add:hover { background: rgba(255, 255, 255, 0.06); color: var(--text-1); }
+.term-add svg { width: 14px; height: 14px; }
+.term-menu { position: fixed; z-index: 30; min-width: 180px; padding: 4px; border-radius: 9px; background: var(--surface-2); border: 1px solid var(--border-subtle); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); display: flex; flex-direction: column; }
+.term-menu[hidden] { display: none; }
+.term-menu button { height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--text-1); font: 12px var(--font); text-align: left; cursor: pointer; }
+.term-menu button:hover { background: var(--accent); }
+.term-urls { display: flex; gap: 6px; flex: none; }
+.term-url { height: 24px; padding: 0 9px; border-radius: 12px; border: 1px solid rgba(52, 211, 153, 0.35); background: rgba(52, 211, 153, 0.1); color: #6ee7b7; font: 500 11.5px 'Cascadia Mono', Consolas, monospace; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.term-url:hover { background: rgba(52, 211, 153, 0.18); }
+.term-url::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #34d399; }
+.term-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.term-view[hidden] { display: none; }
+#term-shells { display: contents; }
+.term-host { flex: 1; min-height: 0; padding: 8px 4px 4px 10px; background: #0b0c0c; }
+.term-host .xterm { height: 100%; }
+.term-host .xterm-viewport { scrollbar-width: thin; scrollbar-color: #2e3130 transparent; }
+.term-ended { padding: 6px 12px; font: 11.5px var(--font); color: var(--text-3); border-top: 1px solid var(--hairline); background: var(--surface-1); display: flex; align-items: center; gap: 10px; }

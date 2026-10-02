@@ -6,11 +6,11 @@ const fs = require('fs');
 const path = require('path');
 const { app, safeStorage } = require('electron');
 
-const SECRET_KEYS = ['anthropicKey', 'openaiKey', 'elevenlabsKey'];
+const SECRET_KEYS = ['anthropicKey', 'openaiKey'];
 const CHOICES = {
   provider: ['local', 'anthropic', 'openai'],
-  sttProvider: ['local', 'openai', 'elevenlabs'],
-  ttsProvider: ['system', 'openai', 'elevenlabs'],
+  ttsProvider: ['kokoro', 'system'],
+  voice: ['af_heart', 'af_bella', 'bf_emma', 'am_michael', 'am_fenrir'],
 };
 
 const MODELS = [
@@ -35,13 +35,10 @@ const DEFAULTS = {
   blockedWindowKeywords: 'password, 1password, bitwarden, lastpass, keepass, bank, paypal, wallet, credential',
 
   speakResponses: true,
-  ttsProvider: 'system',          // system | elevenlabs | openai
-  systemVoice: '',                // voice name from speechSynthesis
-  elevenlabsVoice: '',            // voice_id
-  openaiVoice: 'coral',
+  ttsProvider: 'kokoro',          // kokoro: Bigfoot's own voice (./kokoro); system: Windows' voice
+  voice: 'af_heart',              // one of ./kokoro VOICES
+  systemVoice: '',                // Windows voice, used only if Bigfoot's voice fails
   speechRate: 1.0,
-
-  sttProvider: 'local',           // local (Windows, offline) | openai | elevenlabs
 
   soundEffects: true,
   showBuddy: true,
@@ -50,6 +47,7 @@ const DEFAULTS = {
   onboarded: false,
   onboardedVersion: 0,            // which setup flow was completed (2 = with the on-device model step)
   femaleVoiceDefault: true,       // set once the old male default voice has been cleared
+  builtInVoice: true,             // set once moved to Bigfoot's own voice
 };
 
 class Settings {
@@ -86,8 +84,12 @@ class Settings {
       if (!raw.femaleVoiceDefault) {
         const { isMaleVoice } = require('./voice');
         if (isMaleVoice(this.values.systemVoice)) this.values.systemVoice = '';
-        if (isMaleVoice(this.values.openaiVoice)) this.values.openaiVoice = 'coral';
         this.values.femaleVoiceDefault = true;
+      }
+      // Windows, OpenAI and ElevenLabs voices gave way to Bigfoot's own voice (done once).
+      if (!raw.builtInVoice) {
+        this.values.ttsProvider = 'kokoro';
+        this.values.builtInVoice = true;
       }
     } catch (err) {
       if (err.code !== 'ENOENT') console.error('Settings could not be read, using defaults:', err.message);

@@ -11,12 +11,12 @@ const { resolveProvider } = require('./llm');
 const { readInk, interpretInk, splitScripts, pretty } = require('./mathink');
 const { solveSystem, evaluate, solveEquation, normalize: normalizeMath } = require('./math');
 const cas = require('./cas');
-const { matchIntent } = require('./intents');
+const { matchIntent, matchTerminal } = require('./intents');
 const { matchUiCommand } = require('./uicommand');
+const kokoro = require('./kokoro');
 const { mathmlToText } = require('./mathml');
 const { latexToText } = require('./latex');
 const mathread = require('./mathread');
-const voice = require('./voice');
 
 const PTT_DELAY_MS = 150;      // ignore quick Ctrl+Alt shortcuts; only a hold starts listening
 const MIN_RECORDING_MS = 350;
@@ -26,8 +26,8 @@ const STOP_TALKING = /^\W*(?:(?:ok(?:ay)?|hey|thanks?|please|big ?foot)\W+)*(?:s
 const STATE_LABELS ={ idle: 'Ready', listening: 'Listening…', processing: 'Thinking…', acting: 'Working…', responding: 'Talking…' };
 
 class Controller {
-  constructor({ windows, settings, agent, audio, input, costs, activity, logger, local, runtime, speech, isOnline = () => true }) {
-    Object.assign(this, { windows, settings, agent, audio, input, costs, activity, logger, local, runtime, speech, isOnline });
+  constructor({ windows, settings, agent, audio, input, costs, activity, logger, local, runtime, speech, terminals = null, isOnline = () => true }) {
+    Object.assign(this, { windows, settings, agent, audio, input, costs, activity, logger, local, runtime, speech, terminals, isOnline });
     this.state = 'idle';
     this.listenSource = null;   // 'ptt' | 'wake' | 'voice'
     this.voiceMode = false;     // Talk is on: keep listening after every request until it's turned off
@@ -347,17 +347,8 @@ class Controller {
     this.runTask(text, 'voice');
   }
 
-  /** Whisper on this PC, or the chosen cloud service while online. */
+  /** Whisper on this PC: private, offline, and loaded ahead so a sentence takes about two seconds. */
   async transcribe(wav) {
-    const provider = this.settings.get('sttProvider');
-    const key = provider === 'local' ? '' : this.settings.secret(provider === 'elevenlabs' ? 'elevenlabsKey' : 'openaiKey');
-    if (key && this.isOnline()) {
-      try {
-        return await voice.transcribe({ provider, key, audio: wav, mimeType: 'audio/wav' });
-      } catch (err) {
-        this.activity.add('error', `${err.message} Using the recognizer on this PC instead.`);
-      }
-    }
     try {
       return await this.speech.transcribe(wav);
     } catch (err) {
@@ -802,6 +793,14 @@ class Controller {
     this.bubble(intent ? '' : local && this.runtime.preparing ? `getting ready for first use (${this.runtime.preparing.percent}%). your answer comes right after…`
       : local && !this.runtime.running ? 'one moment, my AI is still loading…' : '');
     try {
+      // "open the terminal", "run npm install in the terminal": Bigfoot's own terminal, at once.
+      const term = !region && !drawing && this.terminals ? matchTerminal(text) : null;
+      if (term) {
+        const reply = await this.terminalCommand(term);
+        if (reply) await this.presentReply(reply, null, display.id);
+        else this.setState('idle');
+        return { ok: true };
+      }
       // "click Sign in", "scroll down": done from the screen list in about a second, no model.
       const uiCommand = !intent && !region && !drawing ? matchUiCommand(text) : null;
       if (uiCommand) {
@@ -827,6 +826,8 @@ class Controller {
         this.panelLog('progress', intent.reply);
         this.setState('processing');
       }
+      // The local model takes a while to answer: a spoken request hears "On it." at once.
+      if (local && source === 'voice') this.audio.acknowledge();
       const result = await this.agent.run(intent ? intent.followUp : text, { region: sentRegion, drawing });
       this.sendUsage();
       if (result.status === 'stopped') {
@@ -846,6 +847,31 @@ class Controller {
       if (region && !this.pendingRegion) { clearTimeout(this.regionFade); this.windows.broadcast('region', null); }
       this.setInkBusy(false);
     }
+  }
+
+  /**
+   * Bigfoot's Terminal page: open it (with a new tab of a shell), or run a command in the user's
+   * terminal where they can see and use it. The command is shown for approval first.
+   */
+  async terminalCommand(cmd) {
+    const t = this.terminals;
+    const mine = () => t.list().filter((s) => s.owner === 'user' && !s.exited && (s.shell === 'powershell' || s.shell === 'pwsh'));
+    let tab = null;
+    if (cmd.kind === 'open') {
+      tab = cmd.shell ? t.create({ shell: cmd.shell }) : (mine().pop() || t.create({ shell: 'powershell' }));
+      this.windows.openTerminal();
+      this.windows.send(this.windows.main, 'term:focus', tab.id);
+      return cmd.shell ? `Opened ${tab.name}.` : 'Here’s your terminal.';
+    }
+    await this.agent.confirm('change', { title: 'Run this in the terminal?', message: 'In your terminal', detail: cmd.command, confirm: 'Run' })
+      .catch((err) => { throw Object.assign(err, { title: 'Not run' }); });
+    tab = mine().find((s) => !s.busy) || t.create({ shell: 'powershell' });
+    await t.ready(tab.id);
+    this.windows.openTerminal();
+    this.windows.send(this.windows.main, 'term:focus', tab.id);
+    this.activity.add('command', cmd.command);
+    t.write(tab.id, `${cmd.command}\r`);
+    return `Running it in your terminal.`;
   }
 
   /** The local model's answer, shown next to the cursor while it's being written. */
@@ -935,8 +961,12 @@ class Controller {
     if (this.state === 'responding') this.setState('idle');
   }
 
-  async previewVoice() {
-    return this.audio.speak(`Hi! I’m ${this.name}. Hold Control and Alt, or just say hey ${this.name}, and tell me what to do.`, { force: true });
+  /** A voice saying hello: ready-made (plays at once) when it can be, else spoken now. */
+  async previewVoice(voice = null) {
+    const id = voice || this.settings.get('voice');
+    const file = kokoro.previewFile(id, this.name, this.settings.get('speechRate'));
+    if (file) return this.audio.playFile(file);
+    return this.audio.speak(kokoro.previewText(this.name), { force: true, voice: id });
   }
 
   finishOnboarding({ launchAtLogin }) {

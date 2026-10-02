@@ -545,3 +545,27 @@ test('the saved instructions are always the instructions, even when a math readi
     server.close();
   }
 });
+
+test('a model already on disk is found and used, so setup never downloads it again', () => {
+  const dir = tmp();
+  const values = { localModel: '' };
+  const settings = { get: (k) => values[k], update: (p) => Object.assign(values, p) };
+  const fake = { id: 'test-vl', label: 'Test VL', files: [{ name: 'm.gguf', size: 5 }, { name: 'mm.gguf', size: 3 }] };
+  catalog.MODELS.push(fake);
+  try {
+    const m = new LocalModelManager({ dir, settings });
+    assert.equal(m.installedId(), ''); // nothing there yet
+    fs.mkdirSync(m.runtimeDir(), { recursive: true });
+    fs.writeFileSync(path.join(m.runtimeDir(), 'llama-server.exe'), 'x');
+    fs.mkdirSync(m.modelDir('test-vl'), { recursive: true });
+    fs.writeFileSync(path.join(m.modelDir('test-vl'), 'm.gguf'), '12345');
+    fs.writeFileSync(path.join(m.modelDir('test-vl'), 'mm.gguf'), '12'); // one byte short: not complete
+    assert.equal(m.installedId(), '');
+    fs.writeFileSync(path.join(m.modelDir('test-vl'), 'mm.gguf'), '123');
+    assert.equal(m.installedId(), 'test-vl'); // found by its files, though settings were empty
+    assert.equal(values.localModel, 'test-vl');
+    assert.equal(m.snapshot().status, 'ready');
+  } finally {
+    catalog.MODELS.splice(catalog.MODELS.indexOf(fake), 1);
+  }
+});

@@ -12,6 +12,7 @@ const { Agent } = require('./agent');
 const { ComputerExecutor, READ_ONLY } = require('./computer');
 const { ACTIONS: COMPUTER_ACTIONS } = require('./llm/computer-schema');
 const { ScreenReader } = require('./screenread');
+const { Terminals } = require('./terminals');
 const SCREEN_ACTIONS = new Set(['click_element', 'type_into', 'scroll_screen', 'drag_element']);
 const { PluginRegistry } = require('./plugins/registry');
 const { PluginManager } = require('./plugins/manage');
@@ -86,8 +87,9 @@ async function start() {
     pointAt: (p) => flyTo({ ...p, displayId: agent.target.display.id }),
   });
   const ui = new ScreenReader({ input, pointAt: (p) => flyTo({ ...p, displayId: agent.target.display.id }) });
+  const terminals = new Terminals({ logger }); // real PowerShell / cmd / Git Bash terminals
   const agent = new Agent({
-    settings, input, computer, plugins, costs, runtime, ui, isOnline,
+    settings, input, computer, plugins, costs, runtime, ui, terminals, isOnline,
     hooks: {
       state: (s) => { if (controller.state !== s) controller.setState(s); },
       progress: (text) => {
@@ -115,7 +117,7 @@ async function start() {
       markImage: async (png, points) => Buffer.from(await audio.call('mark-image', { png, points }, 15000)),
     },
   });
-  controller = new Controller({ windows, settings, agent, audio, input, costs, activity, logger, local, runtime, speech, isOnline });
+  controller = new Controller({ windows, settings, agent, audio, input, costs, activity, logger, local, runtime, speech, terminals, isOnline });
 
   process.on('uncaughtException', (err) => {
     logger.error('Uncaught exception', err);
@@ -128,7 +130,7 @@ async function start() {
   session.defaultSession.setPermissionRequestHandler((wc, permission, cb) => cb(permission === 'media' && isEngine(wc)));
   session.defaultSession.setPermissionCheckHandler((wc, permission) => permission === 'media' && isEngine(wc));
 
-  registerIpc({ controller, windows, settings, agent, audio, activity, plugins, pluginManager, logger, costs, local, runtime });
+  registerIpc({ controller, windows, settings, agent, audio, activity, plugins, pluginManager, logger, costs, local, runtime, terminals });
 
   local.on('progress', (snap) => windows.send(windows.main, 'local:progress', snap));
   local.on('installed', (id) => {
@@ -221,6 +223,7 @@ async function start() {
   // compete for memory and disk on a smaller PC.
   setTimeout(() => {
     speech.preload();
+    setTimeout(() => audio.warmVoice(), 1500); // Bigfoot’s voice, ready before the first reply
     const loadAi = () => { if (settings.get('provider') === 'local') runtime.preload(); };
     if (speech.state === 'loading') speech.once('state', () => setTimeout(loadAi, 500));
     else loadAi();
@@ -236,6 +239,7 @@ async function start() {
 
   // Someone who finished an older setup (before the on-device model step) and has no model yet
   // gets that step; everyone who already has a model is simply marked as up to date.
+  local.installedId(); // a model already on disk counts as installed, even if settings were reset
   const oldSetup = settings.get('onboarded') && settings.get('onboardedVersion') < ONBOARDING_VERSION;
   if (oldSetup && settings.get('localModel')) settings.update({ onboardedVersion: ONBOARDING_VERSION });
   if (!settings.get('onboarded') || (oldSetup && !settings.get('localModel') && !local.active())) windows.openOnboarding();
@@ -260,6 +264,7 @@ async function start() {
     input.stop();
     runtime.stop();
     speech.stop();
+    terminals.closeAll();
   });
 }
 
@@ -290,6 +295,8 @@ function actionLabel(name, inp) {
     open_app: `Opened ${i.name}`,
     open_url: `Opened ${i.url}`,
     run_command: 'Ran a command',
+    start_process: `Started ${i.name || String(i.command || '').slice(0, 40)}`,
+    terminal: i.action === 'list' ? 'Checked the terminals' : `${i.action === 'read' ? 'Read' : i.action === 'stop' ? 'Stopped' : 'Closed'} terminal ${i.id}`,
     list_directory: `Looked in ${i.path}`,
     read_file: `Read ${i.path}`,
     write_file: `Wrote ${i.path}`,

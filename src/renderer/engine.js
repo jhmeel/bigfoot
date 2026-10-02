@@ -210,10 +210,10 @@
     }
   }
 
-  function play({ audio }) {
+  function play({ audio, type = 'audio/mpeg' }) {
     stopAudio();
     return new Promise((resolve, reject) => {
-      const el = new Audio(URL.createObjectURL(new Blob([audio], { type: 'audio/mpeg' })));
+      const el = new Audio(URL.createObjectURL(new Blob([audio], { type })));
       currentAudio = el;
       finishSpeech = resolve;
       const cleanup = () => { URL.revokeObjectURL(el.src); if (currentAudio === el) currentAudio = null; finishSpeech = null; };

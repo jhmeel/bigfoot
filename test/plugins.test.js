@@ -164,3 +164,35 @@ test('tidy turns rough shapes into perfect ones and leaves writing alone', async
   assert.equal(await drawing.run({ action: 'tidy' }, ctx), 'Tidied 2 shapes.');
   assert.deepEqual(ctx.ops[0], { op: 'tidy', rect: null });
 });
+
+test('the AI never works inside Bigfoot\'s own folders, and new projects go elsewhere', () => {
+  const electron = require('electron');
+  const { assertNotBigfoot, assertWritable } = require('../src/main/plugins/lib/paths');
+  const appDir = path.join(os.tmpdir(), 'Programs', 'Bigfoot', 'resources', 'app.asar');
+  const was = electron.app;
+  electron.app = { getAppPath: () => appDir, getPath: (k) => (k === 'exe' ? path.join(os.tmpdir(), 'Programs', 'Bigfoot', 'Bigfoot.exe') : path.join(os.tmpdir(), 'Roaming', 'Bigfoot')) };
+  try {
+    assert.throws(() => assertNotBigfoot(path.join(os.tmpdir(), 'Programs', 'Bigfoot', 'resources', 'x.js')), /Bigfoot's own folder/);
+    assert.throws(() => assertWritable(path.join(os.tmpdir(), 'Roaming', 'Bigfoot', 'settings.json')), /Bigfoot's own folder/);
+    assert.doesNotThrow(() => assertNotBigfoot(path.join(os.homedir(), 'Projects', 'todo-app')));
+  } finally {
+    electron.app = was;
+  }
+});
+
+test('web search results and pages are read into short, clean text', () => {
+  const web = require('../src/main/plugins/builtin/web');
+  const ddg = `<div class="result"><a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fvite.dev%2Fguide%2F&amp;rut=x">Getting Started | <b>Vite</b></a>
+    <a class="result__snippet" href="#">Scaffold with <b>npm create vite@latest</b> &amp; go.</a></div></div>`;
+  assert.deepEqual(web.parseDuckDuckGo(ddg), [{ title: 'Getting Started | Vite', url: 'https://vite.dev/guide/', snippet: 'Scaffold with npm create vite@latest & go.' }]);
+  const bing = '<ol><li class="b_algo"><h2><a href="https://react.dev/learn">Quick Start &ndash; React</a></h2><div class="b_caption"><p>Learn React step by step.</p></div></li></ol>';
+  assert.deepEqual(web.parseBing(bing), [{ title: 'Quick Start – React', url: 'https://react.dev/learn', snippet: 'Learn React step by step.' }]);
+  const page = '<html><head><title>Docs</title><script>evil()</script></head><body><nav>Home | About</nav><main><h1>Install</h1><p>Run <code>npm i</code>.</p>'
+    + '<p>' + 'Filler text. '.repeat(60) + '</p><ul><li>Fast</li><li>Small</li></ul></main><footer>© 2026</footer></body></html>';
+  const { title, text } = web.pageText(page);
+  assert.equal(title, 'Docs');
+  assert.match(text, /^# Install\nRun npm i \.?/);
+  assert.match(text, /• Fast\n• Small/);
+  assert.doesNotMatch(text, /evil|Home \| About|© 2026/);
+  assert.equal(web.passages('a\nnothing here\ninstall with npm\nmore\nunrelated\nend', 'npm install', 100), 'nothing here\ninstall with npm\nmore');
+});

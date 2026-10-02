@@ -51,10 +51,11 @@ class Agent {
    *   hooks       { state, progress, action, approve, notice, terminal, draw }
    *   runtime     LocalRuntime (runs the local model)
    *   ui          ScreenReader (the screen as a list of elements)
+   *   terminals   Terminals (real terminals the AI runs commands in)
    *   isOnline    () => boolean
    */
-  constructor({ settings, input, computer, plugins, costs, hooks, runtime = null, ui = null, isOnline = () => true }) {
-    Object.assign(this, { settings, input, computer, plugins, costs, hooks, runtime, ui, isOnline });
+  constructor({ settings, input, computer, plugins, costs, hooks, runtime = null, ui = null, terminals = null, isOnline = () => true }) {
+    Object.assign(this, { settings, input, computer, plugins, costs, hooks, runtime, ui, terminals, isOnline });
     this.task = '';
     this.visual = false; // the request is about a drawing or a marked area: keep real screenshots
     this.provider = null;
@@ -423,6 +424,7 @@ class Agent {
       listLimit: this.listLimit(this.provider),
       modelPoint: this.modelPoint(this.provider),
       guard: async () => { await this.guardSensitiveWindow(); await this.failSafe(); },
+      terminals: this.terminals, // for the terminal tools (./plugins/builtin/shell.js)
     };
   }
 

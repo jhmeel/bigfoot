@@ -46,9 +46,6 @@
 .field-wrap .icon-btn { right: 6px; }
 .btn.small { height: 26px; padding: 0 11px; font-size: 12px; border-radius: 7px; }
 
-.voice-row { display: flex; gap: 8px; }
-.voice-row select { flex: 1; }
-.voice-row .btn { height: 30px; }
 
 .mic-card { width: 100%; max-width: 420px; margin-top: 20px; display: flex; align-items: center; gap: 14px; padding: 14px; text-align: left;
   border-radius: var(--r-xl); background: var(--surface-1); border: 1px solid var(--hairline); }
@@ -98,3 +95,7 @@
   border-radius: var(--r-lg); background: var(--surface-1); border: 1px solid var(--hairline); text-align: left; }
 .caption.block { display: block; margin-top: 2px; line-height: 1.45; }
 .orb-mark { filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.5)); }
+/* Five voices fit the setup screen without scrolling. */
+.step .voice-picker { gap: 5px; }
+.step .voice-card { padding: 6px 12px; }
+.step .voice-avatar { width: 36px; height: 36px; }

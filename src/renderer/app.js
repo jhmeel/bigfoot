@@ -6,8 +6,6 @@
   const $ = (id) => document.getElementById(id);
   const TITLES = { home: 'Home', terminal: 'Terminal', assistant: 'Assistant', account: 'Models', voice: 'Voice', general: 'General' };
   const ALIASES = { listening: 'voice' }; // older links to the Listening page
-  const PROVIDER_KEY = { openai: 'openaiKey', elevenlabs: 'elevenlabsKey' };
-  const PROVIDER_NAME = { openai: 'OpenAI', elevenlabs: 'ElevenLabs', system: 'System' };
   const update = (patch) => api.invoke('settings:update', patch).then((v) => { s = v; return v; });
 
   let s = await api.invoke('settings:get');
@@ -188,57 +186,15 @@
   const speakHint = () => { $('speak-hint').textContent = ''; };
   UI.switchControl($('speak'), s.speakResponses, async (v) => { await update({ speakResponses: v }); speakHint(); });
   speakHint();
-  const voiceKeyFor = { system: 'systemVoice', openai: 'openaiVoice', elevenlabs: 'elevenlabsVoice' };
-  const ttsKey = UI.keyField({
-    input: $('tts-key'), status: $('tts-key-status'), remove: $('tts-key-remove'),
-    key: () => PROVIDER_KEY[s.ttsProvider], has: false,
-    onSaved: async () => { s = await api.invoke('settings:get'); refreshVoice(); refreshStt(); },
+  const previewMsg = 'Built in and private: speech is made on this PC. Press ▶︎ to hear a voice.';
+  UI.voicePicker($('voices'), s.voice, {
+    onPick: (id) => update({ voice: id }),
+    onMessage: (m) => { $('preview-msg').textContent = m || previewMsg; },
   });
-  $('tts-key-link').addEventListener('click', () => api.invoke('app:open-link', s.ttsProvider));
-
-  async function refreshVoice() {
-    const p = s.ttsProvider;
-    $('tts-key-row').hidden = p === 'system';
-    $('tts-hint').textContent = p === 'system' ? 'Free' : '';
-    if (p !== 'system') {
-      $('tts-key-label').textContent = `${PROVIDER_NAME[p]} API key`;
-      ttsKey.setHas(s.has[PROVIDER_KEY[p]]);
-    }
-    await UI.loadVoices($('voice'), p, s[voiceKeyFor[p]], (msg) => { $('preview-msg').textContent = msg; });
-    if ($('voice').value && $('voice').value !== s[voiceKeyFor[p]]) await update({ [voiceKeyFor[p]]: $('voice').value });
-  }
-  seg('tts-provider', () => s.ttsProvider, async (v) => { await update({ ttsProvider: v }); $('preview-msg').textContent = `Hear how ${s.assistantName} sounds.`; refreshVoice(); });
-  $('voice').addEventListener('change', () => update({ [voiceKeyFor[s.ttsProvider]]: $('voice').value }));
   $('rate').value = s.speechRate;
   $('rate').addEventListener('change', () => update({ speechRate: Number($('rate').value) }));
-  $('preview').addEventListener('click', async () => {
-    const btn = $('preview');
-    btn.disabled = true;
-    $('preview-msg').textContent = 'Playing…';
-    const was = s.speakResponses;
-    if (!was) await update({ speakResponses: true }); // preview should play even if replies are muted
-    const res = await api.invoke('voice:preview');
-    if (!was) await update({ speakResponses: false });
-    $('preview-msg').textContent = res.ok ? `Hear how ${s.assistantName} sounds.` : res.message;
-    btn.disabled = false;
-  });
 
-  // ------------------------------------------------------------------ Listening
-  const sttKey = UI.keyField({
-    input: $('stt-key'), status: $('stt-key-status'), remove: $('stt-key-remove'),
-    key: () => PROVIDER_KEY[s.sttProvider], has: false,
-    onSaved: async () => { s = await api.invoke('settings:get'); refreshStt(); if (s.ttsProvider !== 'system') refreshVoice(); },
-  });
-  $('stt-key-link').addEventListener('click', () => api.invoke('app:open-link', s.sttProvider));
-  function refreshStt() {
-    const cloud = s.sttProvider !== 'local';
-    $('stt-key-row').hidden = !cloud;
-    $('stt-hint').textContent = cloud ? 'Needs internet; offline, Whisper on this PC is used' : 'Whisper · private, works offline';
-    if (!cloud) return;
-    $('stt-key-label').textContent = `${PROVIDER_NAME[s.sttProvider]} API key`;
-    sttKey.setHas(s.has[PROVIDER_KEY[s.sttProvider]]);
-  }
-  seg('stt-provider', () => s.sttProvider, async (v) => { await update({ sttProvider: v }); refreshStt(); });
+  // ------------------------------------------------------------------ Microphone
 
   const drawMeter = UI.meter($('mic-meter'));
   api.on('level', (l) => { if (micTesting) drawMeter(l); });
@@ -377,7 +333,5 @@
     if (v && v.models) s = v;
   });
 
-  refreshVoice();
-  refreshStt();
   show(new URLSearchParams(location.search).get('section') || 'home');
 })();

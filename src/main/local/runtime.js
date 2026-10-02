@@ -42,10 +42,15 @@ function tuningFor(hw) {
   return { imageTokens: 256, edge: 1024, cpuOnly: true, lock: false };
 }
 
-/** Leave a core for Windows and the user's apps, so the PC stays responsive while the model works. */
+/** Writing leaves a core for Windows and the user's apps, so the PC stays responsive while the model works. */
 function threadCount() {
   const physical = Math.max(1, Math.round(os.cpus().length / 2));
   return Math.max(2, physical - 1);
+}
+
+/** Reading the request (the longest wait) uses every core: 21 instead of 18 words-pieces a second on a 4-core laptop. */
+function batchThreadCount() {
+  return Math.max(2, Math.round(os.cpus().length / 2));
 }
 
 class RuntimeError extends Error {
@@ -73,7 +78,9 @@ const lowMemory = () => os.totalmem() < 12 * 1024 ** 3;
 
 function contextSize() {
   if (os.totalmem() >= 24 * 1024 ** 3) return 16384;
-  return lowMemory() ? 6144 : 8192;
+  // 8192 even with less memory: the 8-bit cache makes it about 150 MB more than 6144, and the
+  // instructions and tools take about 4,900 of it.
+  return 8192;
 }
 
 /** KV cache in 8 bits (half the memory, no visible quality loss) and a small prompt cache. */
@@ -236,7 +243,7 @@ class LocalRuntime extends EventEmitter {
       '--image-max-tokens', String(this.tuning.imageTokens),
       '--cache-reuse', '256', // reuse cached context even after older screenshots are dropped
       '--batch-size', '512', // same speed (the compute chunk is 512 anyway), but progress is reported every 512 tokens
-      '--threads', String(threadCount()), '--threads-batch', String(threadCount()),
+      '--threads', String(threadCount()), '--threads-batch', String(batchThreadCount()),
       '--slot-save-path', this.cacheDir(),
       ...memoryArgs(),
       ...(this.tuning.cpuOnly ? ['--device', 'none'] : []),

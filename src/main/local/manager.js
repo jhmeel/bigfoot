@@ -31,9 +31,29 @@ class LocalModelManager extends EventEmitter {
   modelDir(id) { return path.join(this.dir, 'models', id); }
   fileTarget(f, modelId) { return f.runtime ? path.join(this.dir, 'runtime', f.name) : path.join(this.modelDir(modelId), f.name); }
 
+  /**
+   * The installed model. Decided by the files on disk, not only the saved setting: after a reinstall
+   * or reset settings the model is still there, and setup must not download it again.
+   */
   installedId() {
     const id = this.settings.get('localModel');
-    return id && catalog.modelById(id) ? id : '';
+    if (id && catalog.modelById(id) && this.complete(id)) return id;
+    if (this.active()) return id && catalog.modelById(id) ? id : ''; // mid-download: files are partial
+    const found = catalog.MODELS.find((m) => this.complete(m.id));
+    if (found && found.id !== id) {
+      if (this.logger) this.logger.info(`Found ${found.label} already on this PC; using it`);
+      this.settings.update({ localModel: found.id });
+    }
+    return found ? found.id : '';
+  }
+
+  /** Every file of a model, at its exact size, and the runtime to run it. */
+  complete(id) {
+    const m = catalog.modelById(id);
+    if (!m || !fs.existsSync(path.join(this.runtimeDir(), 'llama-server.exe'))) return false;
+    return m.files.every((f) => {
+      try { return fs.statSync(path.join(this.modelDir(id), f.name)).size === f.size; } catch { return false; }
+    });
   }
 
   paths(id = this.installedId()) {

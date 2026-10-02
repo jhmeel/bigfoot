@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="../../node_modules/@xterm/xterm/css/xterm.css">
   <link rel="stylesheet" href="settings.css">
   <link rel="stylesheet" href="app.css">
   <link rel="stylesheet" href="local-ai.css">
@@ -77,6 +78,17 @@
 
         <!-- ============================================================ TERMINAL -->
         <section data-pane="terminal" class="terminal-pane" hidden>
+          <div class="term-tabs" id="term-tabs" role="tablist">
+            <button class="term-tab active" data-tab="activity" role="tab"><span class="term-dot activity"></span>Activity</button>
+            <span id="term-tablist"></span>
+            <span class="term-add-wrap">
+              <button class="term-add" id="term-add" title="New terminal" aria-label="New terminal"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg></button>
+              <span class="term-menu" id="term-menu" hidden></span>
+            </span>
+            <span class="spacer"></span>
+            <span id="term-urls" class="term-urls"></span>
+          </div>
+          <div class="term-view" data-view="activity">
           <div class="term-toolbar">
             <span class="spacer"></span>
             <input class="field filter" id="filter" placeholder="Filter" spellcheck="false">
@@ -90,6 +102,8 @@
             <span class="spacer"></span>
             <label><span>Auto-scroll</span><span class="switch mini"><input type="checkbox" id="follow" checked><span class="track"></span></span></label>
           </div>
+          </div>
+          <div id="term-shells"></div>
         </section>
 
         <!-- ============================================================ ASSISTANT -->
@@ -163,27 +177,13 @@
 
           <div class="section-label">Voice</div>
           <div class="group">
-            <div class="row"><div class="label">Provider<div class="hint" id="tts-hint"></div></div>
-              <div class="control"><div class="segmented" id="tts-provider" data-options='[["system","System"],["openai","OpenAI"],["elevenlabs","ElevenLabs"]]'></div></div></div>
-            <div class="row stack" id="tts-key-row" hidden>
-              <div class="row-head"><span class="headline" id="tts-key-label">API key</span><span class="status" id="tts-key-status"><span class="dot"></span><span class="text">Not set</span></span></div>
-              <input class="field mono" id="tts-key" type="password" autocomplete="off" spellcheck="false">
-              <div class="row-foot"><a id="tts-key-link">Get an API key</a><span class="spacer"></span><button class="btn plain small" id="tts-key-remove" hidden>Remove</button></div>
-            </div>
-            <div class="row"><div class="label">Voice</div><div class="control"><select class="field" id="voice"></select></div></div>
+            <div class="row stack"><div id="voices"></div><div class="caption" id="preview-msg">Built in and private: speech is made on this PC. Press ▶&#xFE0E; to hear a voice.</div></div>
             <div class="row"><div class="label">Speed</div><div class="control"><span class="caption">Slower</span><input type="range" id="rate" min="0.7" max="1.4" step="0.05"><span class="caption">Faster</span></div></div>
-            <div class="row"><div class="label secondary" id="preview-msg">Hear how <span class="name-slot">Bigfoot</span> sounds.</div><div class="control"><button class="btn secondary small" id="preview">▶&#xFE0E;&nbsp; Preview</button></div></div>
           </div>
 
           <div class="section-label">Speech recognition</div>
           <div class="group">
-            <div class="row"><div class="label">Recognize speech<div class="hint" id="stt-hint"></div></div>
-              <div class="control"><div class="segmented" id="stt-provider" data-options='[["local","On this PC"],["openai","OpenAI"],["elevenlabs","ElevenLabs"]]'></div></div></div>
-            <div class="row stack" id="stt-key-row">
-              <div class="row-head"><span class="headline" id="stt-key-label">OpenAI API key</span><span class="status" id="stt-key-status"><span class="dot"></span><span class="text">Not set</span></span></div>
-              <input class="field mono" id="stt-key" type="password" autocomplete="off" spellcheck="false">
-              <div class="row-foot"><a id="stt-key-link">Get an API key</a><span class="spacer"></span><button class="btn plain small" id="stt-key-remove" hidden>Remove</button></div>
-            </div>
+            <div class="row"><div class="label">Recognize speech<div class="hint">Whisper on this PC · private, works offline</div></div></div>
           </div>
 
           <div class="section-label">Microphone</div>
@@ -225,5 +225,10 @@
   <script src="app.js"></script>
   <script src="home.js"></script>
   <script src="terminal-pane.js"></script>
+  <script src="../../node_modules/@xterm/xterm/lib/xterm.js"></script>
+  <script src="../../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+  <script src="../../node_modules/@xterm/addon-web-links/lib/addon-web-links.js"></script>
+  <script src="../../node_modules/@xterm/addon-unicode11/lib/addon-unicode11.js"></script>
+  <script src="terminal-shells.js"></script>
 </body>
 </html>
