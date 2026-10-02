@@ -5,23 +5,24 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 const INVOKE = new Set([
   'settings:get', 'settings:update', 'provider:test', 'models:list', 'provider:active',
-  'voices:list', 'voice:preview', 'mic:status', 'mic:test', 'wake:status',
+  'voices:list', 'voice:preview', 'voice:stop', 'mic:status', 'mic:test', 'wake:status',
   'task:run', 'task:stop', 'conversation:reset', 'select:start', 'region:clear',
   'app:open-settings', 'app:open-onboarding', 'app:quit', 'app:open-logs', 'app:open-plugins', 'app:open-link', 'app:info',
   'onboarding:finish', 'window:close', 'window:minimize', 'panel:resize', 'approval:answer',
   'terminal:open', 'terminal:get', 'terminal:clear', 'terminal:reveal',
+  'term:shells', 'term:list', 'term:create', 'term:replay', 'term:close', 'term:open-url',
   'local:hardware', 'local:status', 'local:start', 'local:pause', 'local:resume', 'local:cancel',
   'toolbar:pick', 'math:read', 'math:ink', 'math:system', 'math:calc', 'math:share', 'ink:stop', 'tool:exit', 'ink:share', 'ink:reveal', 'loader:status', 'loader:retry',
   'plugins:list', 'plugins:pick', 'plugins:install', 'plugins:remove',
 ]);
 const SEND = new Set([
   'overlay:ready', 'overlay:fly-done', 'overlay:region', 'overlay:region-ask', 'panel:ready',
-  'engine:ready', 'engine:reply', 'engine:level', 'engine:vad', 'ink:passthrough', 'ink:reply', 'ink:state', 'loader:pointer',
+  'engine:ready', 'engine:reply', 'engine:level', 'engine:vad', 'ink:passthrough', 'ink:reply', 'ink:state', 'loader:pointer', 'term:input', 'term:resize',
 ]);
 const RECEIVE = new Set([
   'cursor', 'state', 'bubble', 'bubble-live', 'fly', 'banner', 'welcome', 'settings', 'log', 'log-live', 'log-image', 'usage', 'level',
   'engine:cmd', 'approval:show', 'buddy:visible', 'annotate', 'select', 'region', 'terminal:line',
-  'local:progress', 'local:runtime', 'toolbar:show', 'ink', 'voice-mode', 'loader', 'tools-blocked',
+  'local:progress', 'local:runtime', 'toolbar:show', 'ink', 'voice-mode', 'loader', 'tools-blocked', 'term:data', 'term:exit', 'term:list', 'term:focus',
 ]);
 
 contextBridge.exposeInMainWorld('buddy', {

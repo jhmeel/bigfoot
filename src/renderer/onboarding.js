@@ -13,7 +13,7 @@
 
   UI.titlebar();
 
-  // ------------------------------------------------------------------ navigation
+  // navigation
   const dots = $('dots');
   STEPS.forEach(() => dots.append(document.createElement('i')));
 
@@ -85,7 +85,7 @@
     if (inName || (STEPS[index] === 'welcome' && document.activeElement.tagName !== 'INPUT')) $('next').click();
   });
 
-  // ------------------------------------------------------------------ welcome
+  // welcome
   (() => {
     const bubble = $('hero-bubble');
     const logo = $('hero-logo');
@@ -105,7 +105,7 @@
     }, 900);
   })();
 
-  // ------------------------------------------------------------------ name
+  // name
   function cleanName(v) {
     return String(v).replace(/[^\p{L}\p{M}' -]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 24);
   }
@@ -135,24 +135,19 @@
   $('wake').checked = s.wakeWord;
   $('name').addEventListener('input', renderName);
 
-  // ------------------------------------------------------------------ voice (Windows voices)
+  // voice (Bigfoot's own voices)
+  let voicesShown = false;
   async function renderVoice() {
-    if (s.ttsProvider !== 'system') await update({ ttsProvider: 'system' });
-    $('voice-msg').textContent = '';
-    await UI.loadVoices($('voice'), 'system', s.systemVoice, (m) => { $('voice-msg').textContent = m; });
-    if ($('voice').value && $('voice').value !== s.systemVoice) await update({ systemVoice: $('voice').value });
-    $('preview').disabled = !$('voice').value;
+    if (voicesShown) return;
+    voicesShown = true;
+    if (s.ttsProvider !== 'kokoro') await update({ ttsProvider: 'kokoro' });
+    await UI.voicePicker($('voices'), s.voice, {
+      onPick: (id) => update({ voice: id }),
+      onMessage: (m) => { $('voice-msg').textContent = m; },
+    });
   }
-  $('voice').addEventListener('change', () => update({ systemVoice: $('voice').value }));
-  $('preview').addEventListener('click', async () => {
-    $('preview').disabled = true;
-    $('voice-msg').textContent = 'Playing…';
-    const res = await api.invoke('voice:preview');
-    $('voice-msg').textContent = res.ok ? '' : res.message;
-    $('preview').disabled = false;
-  });
 
-  // ------------------------------------------------------------------ listening
+  // listening
   const drawMeter = UI.meter($('mic-meter'));
   let testing = false;
   let heard = 0;
@@ -164,7 +159,6 @@
     $('mic-settings').hidden = kind !== 'bad';
   }
   async function renderListen() {
-    if (s.sttProvider !== 'local') await update({ sttProvider: 'local' });
     const status = await api.invoke('mic:status');
     if (status === 'denied' || status === 'restricted') {
       micState('bad', 'Microphone is turned off', 'Turn on “Let desktop apps access your microphone” in Windows Settings, then come back.');

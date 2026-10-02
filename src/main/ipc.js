@@ -4,24 +4,17 @@
 const { app, ipcMain, shell, systemPreferences, screen, BrowserWindow, net, dialog } = require('electron');
 const path = require('path');
 const llm = require('./llm');
-const voice = require('./voice');
+const { VOICES } = require('./kokoro');
 const hardware = require('./local/hardware');
 const catalog = require('./local/catalog');
 
 const LINKS = {
   anthropic: 'https://platform.claude.com/settings/keys',
   openai: 'https://platform.openai.com/api-keys',
-  elevenlabs: 'https://elevenlabs.io/app/settings/api-keys',
   qwen: 'https://huggingface.co/Qwen',
   micSettings: 'ms-settings:privacy-microphone',
   speechSettings: 'ms-settings:speech',
 };
-
-/** "Microsoft Zira - English (United States)" -> "Zira · English (United States)" */
-function prettyVoice(v) {
-  const [name, lang] = v.id.replace(/^Microsoft /, '').split(' - ');
-  return `${name}${/natural/i.test(v.id) ? ' (Natural)' : ''} · ${lang || v.lang}`;
-}
 
 function microphoneStatus() {
   try {
@@ -31,10 +24,10 @@ function microphoneStatus() {
   }
 }
 
-function registerIpc({ controller, windows, settings, agent, audio, activity, plugins, pluginManager, logger, costs, local, runtime }) {
+function registerIpc({ controller, windows, settings, agent, audio, activity, plugins, pluginManager, logger, costs, local, runtime, terminals }) {
   const handle = (channel, fn) => ipcMain.handle(channel, (event, ...args) => fn(...args, event));
 
-  // ---- settings
+  // settings
   handle('settings:get', () => settings.publicView());
   handle('settings:update', (patch) => settings.update(patch));
   // Validates a candidate key (or the saved one) for a model provider.
@@ -67,7 +60,7 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
     return { id, label: llm.describe(settings, id), online };
   });
 
-  // ---- local AI
+  // local AI
   handle('local:hardware', async () => {
     const hw = await hardware.detect(app.getPath('userData'));
     return { hardware: hw, ...catalog.recommend(hw) };
@@ -78,7 +71,7 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
   handle('local:resume', () => local.resume());
   handle('local:cancel', () => local.cancel());
 
-  // ---- tool tray and math
+  // tool tray and math
   handle('toolbar:pick', (tool) => { controller.pickTool(tool); return true; });
   handle('math:read', (png) => controller.readMath(png));
   handle('math:ink', (strokes, image) => controller.readMathInk(strokes, image));
@@ -97,28 +90,12 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
   ipcMain.on('ink:state', (event, state) => controller.onInkState(windows.displayIdOf(event.sender), state || {}));
   ipcMain.on('ink:passthrough', (event, on) => controller.setInkPassthrough(windows.displayIdOf(event.sender), Boolean(on)));
 
-  // ---- voice
-  handle('voices:list', async (provider) => {
-    if (provider === 'system') {
-      try {
-        const voices = await audio.call('list-voices', {}, 10000);
-        // Female English voices first, so the default pick is one of them.
-        const rank = (v) => (voice.isFemaleVoice(v.id) ? 0 : 2) + (/^en/i.test(v.lang) ? 0 : 1);
-        voices.sort((a, b) => rank(a) - rank(b) || Number(/natural|online/i.test(b.id)) - Number(/natural|online/i.test(a.id)));
-        return { ok: true, voices: voices.map((v) => ({ id: v.id, name: prettyVoice(v) })) };
-      } catch (err) {
-        return { ok: false, message: err.message, voices: [] };
-      }
-    }
-    const key = settings.secret(provider === 'openai' ? 'openaiKey' : 'elevenlabsKey');
-    try {
-      return { ok: true, voices: await voice.listVoices(provider, key) };
-    } catch (err) {
-      return { ok: false, message: err.message, voices: [] };
-    }
-  });
-  handle('voice:preview', async () => {
-    const used = await controller.previewVoice();
+  // voice
+  // Bigfoot's own voices (./kokoro): the choice in setup and on the Voice page.
+  handle('voices:list', () => ({ ok: true, voices: VOICES }));
+  handle('voice:stop', () => { audio.stopSpeaking(); return true; });
+  handle('voice:preview', async (voiceId) => {
+    const used = await controller.previewVoice(typeof voiceId === 'string' ? voiceId : null);
     return { ok: true, used };
   });
   handle('mic:status', () => microphoneStatus());
@@ -132,21 +109,21 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
   });
   handle('wake:status', async () => ({ enabled: settings.get('wakeWord'), active: await controller.refreshWakeWord() }));
 
-  // ---- tasks
+  // tasks
   handle('task:run', (text) => controller.runTask(text, 'typed'));
   handle('task:stop', () => { controller.stopTask(); return true; });
   handle('conversation:reset', () => agent.reset());
   handle('select:start', () => controller.startPanelSelection());
   handle('region:clear', () => { controller.clearRegion(); return true; });
 
-  // ---- windows & app
+  // windows & app
   handle('app:open-settings', (section) => { windows.openSettings(section); return true; });
   handle('app:open-onboarding', () => { windows.openOnboarding(); return true; });
   handle('app:quit', () => app.quit());
   handle('app:open-logs', () => shell.openPath(logger.dir));
   handle('app:open-plugins', () => { pluginManager.ensureFolder(); return shell.openPath(plugins.userDir); });
 
-  // ---- plugins
+  // plugins
   handle('plugins:list', () => pluginManager.list());
   handle('plugins:pick', async (event) => {
     const template = pluginManager.ensureFolder();
@@ -180,13 +157,30 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
   handle('window:minimize', (event) => { const w = BrowserWindow.fromWebContents(event.sender); if (w) w.minimize(); });
   handle('panel:resize', (height) => windows.resizePanel(height));
 
-  // ---- Bigfoot Terminal
+  // Bigfoot Terminal
   handle('terminal:open', () => { windows.openTerminal(); return true; });
+
+  // real terminals (./terminals): the Terminal page's tabs
+  handle('term:shells', () => terminals.shells());
+  handle('term:list', () => terminals.list());
+  handle('term:create', (opts = {}) => terminals.create({ shell: String(opts.shell || 'powershell'), cols: Number(opts.cols) || 100, rows: Number(opts.rows) || 30 }));
+  handle('term:replay', (id) => terminals.replay(id));
+  handle('term:close', (id) => { terminals.close(id); return true; });
+  handle('term:open-url', (url) => {
+    if (/^https?:\/\//i.test(String(url))) shell.openExternal(String(url));
+    return true;
+  });
+  ipcMain.on('term:input', (_e, msg) => { if (msg) terminals.write(msg.id, msg.data); });
+  ipcMain.on('term:resize', (_e, msg) => { if (msg) terminals.resize(msg.id, msg.cols, msg.rows); });
+  const toWindow = (channel) => (payload) => { if (windows.main && !windows.main.isDestroyed()) windows.send(windows.main, channel, payload); };
+  terminals.on('data', toWindow('term:data'));
+  terminals.on('exit', toWindow('term:exit'));
+  terminals.on('list', toWindow('term:list'));
   handle('terminal:get', () => activity.entries);
   handle('terminal:clear', () => { activity.clear(); return true; });
   handle('terminal:reveal', () => shell.showItemInFolder(logger.activityLog));
 
-  // ---- fire-and-forget messages from renderers
+  // fire-and-forget messages from renderers
   ipcMain.on('overlay:region', (event, rect) => controller.onRegionSelected(windows.displayIdOf(event.sender), rect));
   ipcMain.on('overlay:region-ask', (_e, text) => controller.askAboutRegion(typeof text === 'string' ? text.trim().slice(0, 4000) : ''));
   ipcMain.on('overlay:ready', (event) => {

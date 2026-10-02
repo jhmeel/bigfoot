@@ -84,8 +84,8 @@ class LocalProvider extends OpenAIProvider {
 
   /**
    * Put the saved instructions back into the model (≈0.3 s) when something else used it since:
-   * a math reading, or a request stopped part-way (which leaves only part of them, and the next
-   * request re-read the rest: 344 s instead of 15 s on the test laptop). Runs inside the queue.
+   * a math reading, or a request stopped part-way (which leaves only part of them, so the next
+   * request would re-read the rest). Runs inside the queue.
    */
   async restorePrefix() {
     const file = this.prefixFile();
@@ -263,8 +263,7 @@ class LocalProvider extends OpenAIProvider {
    * A new request from the user. Earlier turns are kept as plain text (what was asked and what was
    * answered), without their screenshots and tool steps. On a CPU each kept screenshot is read
    * again on every request (minutes each), and a stopped task leaves history that no longer matches
-   * the saved instructions; then one request took over an hour. Text keeps the conversation's memory
-   * and costs seconds.
+   * the saved instructions. Plain text keeps the context and costs seconds.
    */
   startTask() {
     const text = (m) => (Array.isArray(m.content) ? m.content.filter((p) => p.type === 'text').map((p) => p.text).join(' ') : String(m.content || '')).trim();

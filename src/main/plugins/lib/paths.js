@@ -45,6 +45,20 @@ function assertWritable(p) {
   }
   if (/^[a-z]:$/i.test(lower)) throw new Error('For safety I can\'t change the root of a drive.');
   if (path.normalize(os.homedir()).toLowerCase() === lower) throw new Error('For safety I can\'t delete or replace your whole home folder.');
+  assertNotBigfoot(p);
 }
 
-module.exports = { resolvePath, assertWritable };
+/** Bigfoot's own folders (the app and its data) are never a place to work in. */
+function assertNotBigfoot(p) {
+  const lower = path.normalize(p).toLowerCase();
+  let roots = [];
+  try {
+    const { app } = require('electron');
+    if (app && app.getAppPath) roots = [app.getAppPath(), process.resourcesPath, app.getPath('userData'), path.dirname(app.getPath('exe'))];
+  } catch { /* tests */ }
+  for (const r of roots.filter(Boolean).map((x) => path.normalize(x).toLowerCase().replace(/[\\/]app\.asar$/, ''))) {
+    if (lower === r || lower.startsWith(`${r}\\`)) throw new Error('That is Bigfoot\'s own folder. Work somewhere else, such as a folder in ~/Projects.');
+  }
+}
+
+module.exports = { resolvePath, assertWritable, assertNotBigfoot };

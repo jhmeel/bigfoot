@@ -60,6 +60,9 @@ revision and checked against its SHA-256 before it's installed.
 | llama.cpp runtime b11276 (MIT) | https://github.com/ggml-org/llama.cpp/releases/tag/b11276 |
 | whisper.cpp b5130 and its English base model (MIT), bundled in the installer | https://github.com/ggml-org/whisper.cpp |
 | Tabler Icons 3.48 (MIT), bundled | https://tabler.io/icons |
+| Kokoro 82M v1.0 ONNX (Apache 2.0), voice, bundled | https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX |
+| phonemizer.js 1.2.1 (Apache 2.0; includes eSpeak NG, GPL 3.0) | https://github.com/xenova/phonemizer.js |
+| Pix2Text MFR 1.5 (MIT), handwritten math, bundled | https://huggingface.co/breezedeus/pix2text-mfr-1.5 |
 
 **Cloud models (optional).** Settings › Models can use Claude or OpenAI with your own API key.
 They need an internet connection; whenever you're offline, Bigfoot uses the model on your PC.
@@ -80,6 +83,11 @@ and acts on them by number; Bigfoot clicks their real centres and reports what c
 guesses positions from a picture. Simple commands ("click Sign in", "scroll down", "go back",
 "press Enter") run straight away without the AI. Screenshots are still used for pictures, drawings,
 marked areas, and apps that draw everything themselves (games, canvas apps, remote desktops).
+
+**Voice.** Bigfoot speaks with its own voice, made on this PC by Kokoro 82M (Apache 2.0) and run on
+the CPU with ONNX Runtime: five voices (Heart, Bella and Emma; Michael and Fenrir), chosen in setup
+and on the Voice page. Long replies are spoken in short pieces, each made while the one before it
+plays. Windows’ voice is used only if Bigfoot’s voice fails. Speech is recognized by Whisper on this PC.
 
 **Handwritten math.** The math tool reads handwriting with Pix2Text MFR 1.5 (MIT), bundled and run
 on the CPU with ONNX Runtime: about a second per line.
@@ -171,12 +179,33 @@ Bigfoot starts using the mouse or keyboard.
 ## Voice
 
 - **Hearing you:** Whisper, running on your PC and bundled with Bigfoot: offline, private, and
-  accurate (about 2–5 seconds per sentence on a laptop without a graphics card). OpenAI or
-  ElevenLabs can be chosen in Settings › Voice; they're used only while online. The "Hey Bigfoot"
+  accurate (about 2–5 seconds per sentence on a laptop without a graphics card). The "Hey Bigfoot"
   wake word uses Windows' lightweight keyword spotter.
-- **Talking back:** Windows voices (offline, free), or OpenAI and ElevenLabs voices with a key. Bigfoot
+- **Talking back:** Bigfoot’s own voice, built in and offline: five voices to choose from. Bigfoot
   starts speaking each sentence as soon as it's written, while the rest of the reply is still coming,
   and every reply is also typed out next to the cursor. Turn speech off in Settings › Voice.
+
+## Terminal
+
+The Terminal page has real terminals: PowerShell, Command Prompt, PowerShell 7 and Git Bash in tabs
+(a pseudo-console, as in VS Code), with colours, interactive programs, Ctrl+C, copy and paste, and
+clickable links. Next to them, Activity lists everything Bigfoot did.
+
+- Say or type "open the terminal", "open PowerShell", or "run npm install in the terminal": done
+  at once, in your own tab (commands are shown for approval first).
+- The AI writes code with the file tools, runs commands, builds and tests in its own "Bigfoot" tab
+  you can watch (it keeps its folder between commands, and checks every exit code), and starts
+  dev servers in tabs of their own. A server's localhost address appears as a button above the
+  terminals. New projects go in a folder of their own under ~/Projects unless you say where;
+  Bigfoot never works inside its own folders or Windows' system folders.
+
+## The web
+
+The AI can look things up for free, with no account or key: web_search (DuckDuckGo, or Bing if
+DuckDuckGo doesn't answer) and read_webpage, which returns a page's main text without menus, ads or
+scripts, or only the parts about what it's looking for. It uses them for current facts,
+documentation and error messages, and to check the pages it builds on localhost. Searches are sent to
+those search engines; what pages say is treated as information, never as instructions.
 
 ## Plugins
 
@@ -225,9 +254,11 @@ src/main/             Electron main process
   capture.js          screenshots and coordinate mapping
   screenread.js       the screen as a list of elements (UI Automation), for the AI and quick commands
   uicommand.js        "click …", "scroll down" and other commands done without the AI
+  kokoro.js           Bigfoot’s voice (Kokoro on a worker thread, kokoro-worker.js)
   mathread.js latex.js  the handwritten-math reader and its LaTeX → plain math
   plugins/            tool registry, built-in tools, validator, template
   windows.js          window management
+  terminals.js        real terminals (node-pty) for the Terminal page and the AI's commands
   native/             input helper (SendInput, UI Automation, desktop double-click, wake word, math ink)
 src/renderer/         overlay (buddy, Draw, Math), tool tray, main window, onboarding, audio engine
 build/installer.nsh   installer additions (uninstall prompt, helper shutdown)
@@ -236,7 +267,7 @@ docs/                 plugin guide and technical report
 
 The native helper (`src/main/native/InputHelper.cs`) is compiled with the C# compiler that ships
 with Windows. `npm start` and `npm run dist` build it automatically when it's missing or out of date, and fetch
-the bundled speech recognizer into `vendor/speech` and the math reader into `vendor/math` (SHA-256
+the bundled speech recognizer into `vendor/speech` and the math reader into `vendor/math`, and the voice into `vendor/voice` (SHA-256
 verified; not committed). To rebuild the
 helper by hand:
 

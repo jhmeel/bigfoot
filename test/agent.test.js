@@ -278,3 +278,12 @@ intentTest('the screen list shows what matters for the task, numbered, in readin
   intentAssert.match(short, /\[5\]/);
   intentAssert.match(short, /3 more not shown/);
 });
+
+intentTest('"the terminal" is Bigfoot\'s own: open it, open a shell in it, or run a command in it', () => {
+  const { matchTerminal } = require('../src/main/intents');
+  intentAssert.deepEqual(matchTerminal('Hey Bigfoot, open the terminal'), { kind: 'open', shell: null });
+  intentAssert.deepEqual(matchTerminal('open command prompt'), { kind: 'open', shell: 'cmd' });
+  intentAssert.deepEqual(matchTerminal('run npm install in the terminal'), { kind: 'run', command: 'npm install' });
+  intentAssert.deepEqual(matchTerminal('in my terminal, run git status'), { kind: 'run', command: 'git status' });
+  for (const t of ['open chrome', 'run the tests', 'what is a terminal']) intentAssert.equal(matchTerminal(t), null, t);
+});

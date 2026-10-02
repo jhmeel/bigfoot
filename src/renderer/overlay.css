@@ -49,7 +49,7 @@ html, body { background: transparent !important; pointer-events: none; }
 .bubble.long { font-size: 12px; padding: 6px 10px; border-radius: 8px; max-width: 320px; }
 .bubble.pop { box-shadow: 0 0 22px rgba(51, 128, 255, 1); }
 
-/* ---------------------------------------------------------------- banner */
+/* banner */
 #banner {
   position: fixed; top: 16px; left: 50%;
   width: min(460px, calc(100vw - 32px));
@@ -84,7 +84,7 @@ html, body { background: transparent !important; pointer-events: none; }
 .banner-progress { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: var(--danger); transform-origin: 0 0; opacity: 0.8; }
 #banner.info .banner-progress { background: var(--buddy); }
 
-/* ---------------------------------------------------------------- drawings (annotate tool) */
+/* drawings (annotate tool) */
 #draw { position: fixed; inset: 0; width: 100vw; height: 100vh; overflow: visible; }
 .drawing { opacity: 0; transition: opacity 350ms ease-out; }
 .drawing.show { opacity: 1; }
@@ -106,7 +106,7 @@ html, body { background: transparent !important; pointer-events: none; }
 .draw-label.solo { font-size: 13px; padding: 6px 11px; }
 .draw-label.show { opacity: 1; transform: none; }
 
-/* ---------------------------------------------------------------- user area selection */
+/* user area selection */
 #select-layer { position: fixed; inset: 0; pointer-events: none; }
 body.selecting #select-layer { pointer-events: auto; cursor: crosshair; background: rgba(0, 0, 0, 0.012); }
 /* lasso: glowing trace while drawing, soft fill once closed, a light sweep while analyzing */
@@ -146,7 +146,7 @@ body.selecting #select-layer { pointer-events: auto; cursor: crosshair; backgrou
 #region-ask button:hover { filter: brightness(1.15); }
 #region-ask svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
-/* ---------------------------------------------------------------- math tool */
+/* math tool */
 .math-working {
   position: absolute; margin: 0; padding: 10px 14px 10px 34px; max-width: min(560px, 60vw);
   border-radius: 12px; background: rgba(22, 24, 29, 0.92); border: 1px solid rgba(125, 178, 255, 0.28);
@@ -196,7 +196,7 @@ body.math #math-layer { display: block; pointer-events: auto; cursor: crosshair;
 .math-answer[data-state='thinking'] { width: 14px; height: 14px; box-sizing: border-box; border-radius: 50%; margin-top: -7px; transform: none;
   border: 2px solid rgba(125, 178, 255, 0.25); border-top-color: #7db2ff; animation: spin 0.8s linear infinite; }
 
-/* ---------------------------------------------------------------- calculator (in the math tool) */
+/* calculator (in the math tool) */
 .calc {
   position: fixed; z-index: 35; width: 304px; padding: 0 10px 10px; border-radius: 14px; pointer-events: auto;
   background: rgba(24, 26, 28, 0.97); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
@@ -238,7 +238,7 @@ body.math #math-layer { display: block; pointer-events: auto; cursor: crosshair;
 .calc-keys button.calc-go:hover { background: #4a8fff; }
 .calc-keys button.calc-alg { background: rgba(125, 178, 255, 0.1); color: #a9c8ff; font-size: 12px; }
 
-/* ---------------------------------------------------------------- startup loader */
+/* startup loader */
 #ai-loader {
   position: fixed; right: 18px; bottom: 18px; z-index: 40; width: 300px; padding: 11px 13px 10px;
   border-radius: 13px; background: rgba(20, 22, 27, 0.95); border: 1px solid rgba(125, 178, 255, 0.25);
@@ -283,7 +283,7 @@ body.math #math-layer { display: block; pointer-events: auto; cursor: crosshair;
 .math-title { display: flex; align-items: center; gap: 7px; padding: 0 6px 0 8px; font-size: 12px; font-weight: 600; color: #c9cfcc; white-space: nowrap; }
 .math-title svg { width: 16px; height: 16px; fill: none; stroke: #7db2ff; stroke-width: 1.6; stroke-linecap: round; }
 
-/* ---------------------------------------------------------------- draw tool */
+/* draw tool */
 #ink-layer { position: fixed; inset: 0; display: none; }
 /* Windows sends clicks on fully transparent pixels to the window underneath, so a capture layer
    needs a tint it can hit (about 1% opacity, invisible in practice). */
@@ -353,7 +353,7 @@ body.ink.ink-through #ink-layer { pointer-events: none; cursor: default; backgro
 .ink-bar .size[aria-pressed='true'] { background: rgba(255, 255, 255, 0.09); box-shadow: none; }
 .ink-bar .size[aria-pressed='true'] i { background: var(--c, #fff); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25); }
 
-/* Tactile feedback: short motions that pair with the sounds, so state changes are felt, not just seen. */
+/* Short motions that go with the UI sounds. */
 #buddy-fx { position: absolute; left: 0; top: 0; }
 #buddy-fx.fx-pulse { animation: fx-pulse 320ms var(--spring); }
 #buddy-fx.fx-bounce { animation: fx-bounce 520ms var(--spring); }

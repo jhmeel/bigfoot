@@ -1,7 +1,7 @@
 {
   "name": "bigfoot",
   "productName": "Bigfoot",
-  "version": "1.4.7",
+  "version": "1.4.8",
   "description": "An AI assistant that lives next to your cursor, sees your screen, talks, and operates your computer.",
   "main": "src/main/main.js",
   "author": "Bigfoot",
@@ -13,13 +13,19 @@
     "prestart": "node scripts/build-native.js && node scripts/fetch-speech.js",
     "predist": "node scripts/build-native.js && node scripts/fetch-speech.js",
     "start": "electron .",
-    "test": "node --test test/core.test.js test/agent.test.js test/local.test.js test/plugins.test.js test/speech-stream.test.js",
+    "test": "node --test test/core.test.js test/agent.test.js test/local.test.js test/plugins.test.js test/speech-stream.test.js test/terminal.test.js",
     "dist": "electron-builder --win nsis --x64"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.129.0",
+    "@lydell/node-pty": "^1.2.0-beta.15",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-unicode11": "^0.9.0",
+    "@xterm/addon-web-links": "^0.12.0",
+    "@xterm/xterm": "^6.0.0",
     "nerdamer-prime": "^1.5.0",
     "onnxruntime-node": "1.21.0",
+    "phonemizer": "1.2.1",
     "svg-path-properties": "^2.1.0"
   },
   "devDependencies": {
@@ -49,12 +55,17 @@
       {
         "from": "vendor/math",
         "to": "math"
+      },
+      {
+        "from": "vendor/voice",
+        "to": "voice"
       }
     ],
     "asarUnpack": [
       "src/main/native/**",
       "src/main/plugins/validate-child.js",
-      "node_modules/onnxruntime-node/bin/**"
+      "node_modules/onnxruntime-node/bin/**",
+      "node_modules/@lydell/node-pty-win32-x64/**"
     ],
     "win": {
       "target": [

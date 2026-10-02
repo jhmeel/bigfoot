@@ -95,7 +95,7 @@
     groups = [...groups.filter((g) => g !== grp), grp]; // undo takes from the one just written
   }
 
-  // ---------------------------------------------------------------- answers and live reading
+  // answers and live reading
   /**
    * Everything about one expression sits in a card just below it: what was read (with Solve and
    * Share), the answer, then the working. The card stays inside the screen: shifted left near the
@@ -277,7 +277,7 @@
     groups = groups.filter((x) => x !== grp);
   }
 
-  // ---------------------------------------------------------------- reading
+  // reading
   /** The writing drawn the way the math reader sees it: 384×384, stretched to fill, dark on white. */
   function readerPixels(grp) {
     const b = grp.box;
@@ -390,7 +390,7 @@
     grp.timer = setTimeout(() => read(grp), PAUSE_MS);
   }
 
-  // ---------------------------------------------------------------- pen
+  // pen
   layer.addEventListener('pointerdown', (e) => {
     if (!active || e.button !== 0 || e.target.closest('.ink-bar')) return;
     e.preventDefault();
@@ -440,7 +440,7 @@
   layer.addEventListener('pointerup', endStroke);
   layer.addEventListener('pointercancel', endStroke);
 
-  // ---------------------------------------------------------------- controls
+  // controls
   function undo() {
     const grp = groups[groups.length - 1];
     if (!grp) return;

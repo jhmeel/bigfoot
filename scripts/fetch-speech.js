@@ -1,19 +1,21 @@
 'use strict';
 // Downloads the speech recognizer that ships inside the app (whisper.cpp and its English model)
-// into vendor/speech, and the handwritten-math reader into vendor/math, verifying each file's SHA-256. Runs before `npm start` and `npm run dist`;
+// into vendor/speech, the handwritten-math reader into vendor/math and Bigfoot's voice into
+// vendor/voice, verifying each file's SHA-256. Runs before `npm start` and `npm run dist`;
 // does nothing when the files are already there.
 
 const { execFileSync } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { SPEECH, MATH } = require('../src/main/local/catalog');
+const { SPEECH, MATH, VOICE } = require('../src/main/local/catalog');
 
 const DEST = path.join(__dirname, '..', 'vendor', 'speech');
 const SERVER = path.join(DEST, 'whisper', 'whisper-server.exe');
 const model = SPEECH.find((f) => f.speech);
 const MODEL = path.join(DEST, model.name);
 const MATH_DEST = path.join(__dirname, '..', 'vendor', 'math');
+const VOICE_DEST = path.join(__dirname, '..', 'vendor', 'voice');
 
 const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
@@ -36,6 +38,12 @@ async function main() {
     const file = path.join(MATH_DEST, f.name);
     if (!fs.existsSync(file) || fs.statSync(file).size !== f.size) await fetchVerified(f, file);
   }
+  fs.mkdirSync(VOICE_DEST, { recursive: true });
+  for (const f of VOICE) {
+    const file = path.join(VOICE_DEST, f.file);
+    if (!fs.existsSync(file) || fs.statSync(file).size !== f.size) await fetchVerified(f, file);
+  }
+  await require('./make-voice-previews').makePreviews(VOICE_DEST);
   if (!fs.existsSync(SERVER)) {
     const runtime = SPEECH.find((f) => f.speechRuntime);
     const zip = path.join(DEST, runtime.name);

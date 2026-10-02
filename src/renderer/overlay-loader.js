@@ -1,6 +1,6 @@
 'use strict';
 // Startup loader: a small card in the corner of the main screen while the AI and speech
-// recognition load, so it's clear Bigfoot is getting ready rather than ignoring you.
+// recognition load.
 
 (() => {
   const api = window.buddy;

@@ -94,31 +94,61 @@ window.UI = (() => {
     return { setHas(v) { has = v; render(); }, save };
   }
 
-  /** Fill a <select> with voices for the provider; returns the list. */
-  async function loadVoices(select, provider, current, onError) {
-    select.disabled = true;
-    select.innerHTML = '<option>Loading voices…</option>';
-    let voices = [];
-    const res = await api.invoke('voices:list', provider);
-    if (!res.ok && onError) onError(res.message);
-    voices = res.voices;
-    select.innerHTML = '';
-    if (!voices.length) {
-      const o = document.createElement('option');
-      o.textContent = provider === 'elevenlabs' ? 'Add your ElevenLabs key to load voices' : 'No voices found';
-      o.value = '';
-      select.append(o);
-      return voices;
-    }
+  /**
+   * Bigfoot's voices as cards: pick one, or press its play button to hear it. While a voice plays,
+   * its card shows a moving wave and the button pauses it. onPick(id) saves the choice.
+   */
+  async function voicePicker(el, current, { onPick, onMessage = () => {} }) {
+    const res = await api.invoke('voices:list');
+    const voices = (res && res.voices) || [];
+    el.classList.add('voice-picker');
+    el.setAttribute('role', 'radiogroup');
+    el.innerHTML = '';
+    let playing = null; // { id, done: Promise }
+    const cards = new Map();
+    const ICON_PLAY = '<svg viewBox="0 0 16 16"><path d="M5 3.5v9l7-4.5z"/></svg>';
+    const ICON_PAUSE = '<svg viewBox="0 0 16 16"><rect x="4" y="3.5" width="2.8" height="9" rx="0.8"/><rect x="9.2" y="3.5" width="2.8" height="9" rx="0.8"/></svg>';
+    const select = (id) => cards.forEach((card, vid) => {
+      const on = vid === id;
+      card.classList.toggle('selected', on);
+      card.setAttribute('aria-checked', String(on));
+    });
     for (const v of voices) {
-      const o = document.createElement('option');
-      o.value = v.id;
-      o.textContent = v.name;
-      select.append(o);
+      const card = document.createElement('div');
+      card.className = 'voice-card';
+      card.tabIndex = 0;
+      card.setAttribute('role', 'radio');
+      card.innerHTML = `<img class="voice-avatar" alt="" src="assets/voices/${v.id}.svg"><span class="voice-text"><span class="voice-name"></span><span class="voice-note"></span></span><span class="voice-wave" aria-hidden="true">${'<i></i>'.repeat(7)}</span><button class="voice-play" type="button" aria-label="Play ${v.name}">${ICON_PLAY}</button>`;
+      card.querySelector('.voice-name').textContent = v.name;
+      card.querySelector('.voice-note').textContent = `${v.gender === 'female' ? 'Female' : 'Male'} · ${v.note}`;
+      const pick = () => { select(v.id); onPick(v.id); };
+      card.addEventListener('click', (e) => { if (!e.target.closest('.voice-play')) pick(); });
+      card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+      const button = card.querySelector('.voice-play');
+      const show = (on) => {
+        card.classList.toggle('playing', on);
+        button.innerHTML = on ? ICON_PAUSE : ICON_PLAY;
+        button.setAttribute('aria-label', `${on ? 'Pause' : 'Play'} ${v.name}`);
+      };
+      button.addEventListener('click', async () => {
+        if (playing && playing.id === v.id) { api.invoke('voice:stop'); playing = null; show(false); onMessage(''); return; } // pause
+        if (playing) { api.invoke('voice:stop'); await playing.done; } // another voice: stop that one first
+        pick();
+        show(true);
+        onMessage(`Playing ${v.name}…`);
+        const done = api.invoke('voice:preview', v.id).catch((err) => ({ ok: false, message: err.message }));
+        playing = { id: v.id, done };
+        const r = await done;
+        if (!playing || playing.done !== done) return; // paused, or another voice took over
+        playing = null;
+        show(false);
+        onMessage(r && r.ok === false ? r.message : '');
+      });
+      cards.set(v.id, card);
+      el.append(card);
     }
-    select.value = voices.some((v) => v.id === current) ? current : voices[0].id;
-    select.disabled = false;
-    return voices;
+    select(voices.some((v) => v.id === current) ? current : voices[0] && voices[0].id);
+    return { select };
   }
 
   /** 5-bar level meter driven by the engine's microphone level. */
@@ -138,5 +168,5 @@ window.UI = (() => {
     if (min) min.addEventListener('click', () => api.invoke('window:minimize'));
   }
 
-  return { segmented, switchControl, keyField, loadVoices, meter, titlebar };
+  return { segmented, switchControl, keyField, voicePicker, meter, titlebar };
 })();

@@ -3,7 +3,7 @@
 
 const { ipcMain } = require('electron');
 const { EventEmitter } = require('events');
-const voice = require('./voice');
+const { Kokoro } = require('./kokoro');
 
 class AudioService extends EventEmitter {
   constructor({ windows, settings, logger }) {
@@ -15,6 +15,7 @@ class AudioService extends EventEmitter {
     this.seq = 0;
     this.speaking = false;
     this.stream = null;
+    this.kokoro = new Kokoro(logger); // Bigfoot's own voice, on a worker thread
 
     ipcMain.on('engine:reply', (_e, { id, result, error }) => {
       const w = this.waiters.get(id);
@@ -73,29 +74,76 @@ class AudioService extends EventEmitter {
 
   monitor(on) { return this.call(on ? 'monitor-start' : 'monitor-stop', {}, 8000); }
 
+  /** Start making a sentence's audio now (Bigfoot's voice), so it's ready by the time it's its turn. */
+  prepare(text, voice = null) {
+    if (this.settings.get('ttsProvider') !== 'kokoro') return null;
+    const p = this.kokoro.say(text, voice || this.settings.get('voice'), this.settings.get('speechRate'));
+    p.catch(() => {}); // reported when it's played
+    return p;
+  }
+
   /**
-   * Speak a reply. Cloud voice falls back to the Windows voice, which falls back to silence;
-   * the reply is always typed out on screen as well, so nothing is lost.
-   * Resolves to the voice actually used: 'cloud' | 'system' | 'none'.
+   * "On it.", ready-made in the chosen voice, so a spoken request is answered at once while the AI
+   * works. It leaves the reply's speech alone: the reply's first words simply follow it.
    */
-  async speak(text, { force = false } = {}) {
+  acknowledge() {
+    if (!this.settings.get('speakResponses') || this.settings.get('ttsProvider') !== 'kokoro') return;
+    const file = require('./kokoro').ackFile(this.settings.get('voice'), this.settings.get('speechRate'));
+    if (!file) return;
+    try {
+      this.call('play', { audio: require('fs').readFileSync(file), type: 'audio/wav' }, 10000).catch(() => {});
+    } catch { /* not important */ }
+  }
+
+  /** Play a ready-made recording (a voice preview). */
+  async playFile(file) {
+    this.stopSpeaking();
+    this.speaking = true;
+    try {
+      await this.call('play', { audio: require('fs').readFileSync(file), type: 'audio/wav' }, 60000);
+      return 'bigfoot';
+    } catch (err) {
+      this.logger.error('Couldn’t play the voice preview:', err.message);
+      return 'none';
+    } finally {
+      this.speaking = false;
+    }
+  }
+
+  /** Load Bigfoot's voice ahead of the first reply. */
+  warmVoice() {
+    if (this.settings.get('ttsProvider') === 'kokoro' && this.settings.get('speakResponses')) this.kokoro.warm();
+  }
+
+  /**
+   * Speak a reply in Bigfoot's voice; if that fails, the Windows voice, then silence. The reply is
+   * always typed out on screen as well, so nothing is lost.
+   * Resolves to the voice actually used: 'bigfoot' | 'system' | 'none'.
+   */
+  async speak(text, { force = false, prepared = null, voice = null } = {}) {
     if (!text || (!force && !this.settings.get('speakResponses'))) return 'none';
-    const provider = this.settings.get('ttsProvider');
     const rate = this.settings.get('speechRate');
     this.speaking = true;
     this.said = [...(this.said || []).slice(-20), { text, at: Date.now() }];
     try {
-      if (provider !== 'system') {
+      // Several sentences or a long one: all parts start being made now, in order, and each
+      // plays as soon as it's ready, so speech starts after the first short part.
+      const parts = prepared ? [text] : sentences(String(text), true).flatMap((p) => clauses(p));
+      const made = prepared ? [prepared] : parts.map((p) => this.prepare(p, voice));
+      if (made.length && made.every(Boolean)) {
         try {
-          const key = this.settings.secret(provider === 'openai' ? 'openaiKey' : 'elevenlabsKey');
-          const voiceId = provider === 'openai' ? this.settings.get('openaiVoice') : this.settings.get('elevenlabsVoice');
-          const audio = await voice.synthesize({ provider, key, voice: voiceId, text, speed: rate });
-          if (!this.speaking) return 'none';
-          await this.call('play', { audio });
-          return 'cloud';
+          let any = false;
+          for (const next of made) {
+            const audio = await next;
+            if (!this.speaking) return 'none';
+            if (!audio) continue; // nothing pronounceable
+            await this.call('play', { audio, type: 'audio/wav' }, 120000);
+            any = true;
+          }
+          return any ? 'bigfoot' : 'none';
         } catch (err) {
           if (!this.speaking) return 'none';
-          this.logger.error('Cloud voice failed, using the Windows voice:', err.message);
+          this.logger.error('Bigfoot’s voice failed, using the Windows voice:', err.message);
           this.emit('fallback', err);
         }
       }
@@ -117,46 +165,58 @@ class AudioService extends EventEmitter {
     this.call('stop-audio', {}, 3000).catch(() => {});
   }
 
-  // ---------------------------------------------------------------- speaking a reply as it's written
+  // speaking a reply as it's written
   /** Start a reply that arrives in pieces. */
   beginStream() {
     this.stream = { heard: new Set(), queue: Promise.resolve('none'), used: 'none' };
   }
 
-  /** The reply so far: speak every sentence that's now complete and not spoken yet. */
+  /**
+   * The reply so far: speak every sentence that's now complete and not spoken yet, and the finished
+   * phrases of the sentence still being written ("I opened Chrome," can be said already).
+   */
   feedStream(text) {
     if (!this.stream || !this.settings.get('speakResponses')) return;
-    this.say(sentences(text, false));
+    const { done, rest } = split(String(text), false);
+    this.say(done, true);
+    const phrases = clauses(rest, done.length ? 24 : 4);
+    phrases.pop(); // may still grow
+    this.say(phrases, !done.length);
   }
 
   /** The whole reply: speak what's left. Resolves when everything has been said, to the voice used. */
   finishStream(text) {
     const s = this.stream;
     if (!s) return this.speak(text);
-    if (this.settings.get('speakResponses')) this.say(sentences(String(text), true));
+    if (this.settings.get('speakResponses')) this.say(sentences(String(text), true), true);
     return s.queue.then(() => (this.stream === s ? s.used : 'none'));
   }
 
   /**
-   * Each sentence is spoken once, even if the text around it changes between the streamed version
+   * Each phrase is spoken once, even if the text around it changes between the streamed version
    * and the final reply (a removed [POINT] tag, different spacing, a message that starts over).
    */
-  say(list) {
+  say(list, startsReply = false) {
     const s = this.stream;
-    for (const sentence of list) {
-      const key = sentence.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
-      if (!key || s.heard.has(key)) continue;
-      s.heard.add(key);
-      this.enqueue(s, sentence);
-    }
+    list.forEach((sentence, i) => {
+      // The reply's opening ("Sure,", "Okay,") is said on its own: it's ready in a moment.
+      for (const part of clauses(sentence, startsReply && i === 0 ? 4 : 24)) {
+        const key = part.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+        if (!key || s.heard.has(key)) continue;
+        s.heard.add(key);
+        this.enqueue(s, part);
+      }
+    });
   }
 
   enqueue(s, sentence) {
     s.pending = (s.pending || 0) + 1;
+    // Made right away and in order, so the next part is ready while this one plays.
+    const prepared = this.prepare(sentence.trim());
     s.queue = s.queue.then(async () => {
       try {
         if (this.stream !== s) return 'none';
-        const used = await this.speak(sentence.trim());
+        const used = await this.speak(sentence.trim(), { prepared });
         if (used !== 'none') s.used = used;
         return used;
       } finally {
@@ -191,6 +251,11 @@ class AudioService extends EventEmitter {
  * (". " etc.), because it may still be growing; "3.5" or "e.g." mid-number isn't an ending.
  */
 function sentences(text, complete) {
+  return split(text, complete).done;
+}
+
+/** Sentences that are complete, and the text after them (the sentence still being written). */
+function split(text, complete) {
   const out = [];
   const re = /[\s\S]*?(?:[.!?…]+(?=\s|$)|\n+)/g;
   let m;
@@ -202,7 +267,25 @@ function sentences(text, complete) {
   }
   const rest = text.slice(end).trim();
   if (complete && rest) out.push(rest);
+  return { done: out, rest: complete ? '' : rest };
+}
+
+/**
+ * A sentence in phrases, split after a comma, semicolon, colon or dash once a phrase has a few words:
+ * the first phrase can be spoken while the rest is still being written or made. A phrase depends only
+ * on the text before it, so a sentence splits the same way while it grows and once it's complete.
+ */
+function clauses(sentence, min = 24) {
+  const text = String(sentence).trim();
+  if (!text) return [];
+  const out = [];
+  let cur = '';
+  for (const piece of text.split(/(?<=[,;:—])\s+/)) {
+    cur = cur ? `${cur} ${piece}` : piece;
+    if (cur.length >= min && /[,;:—]$/.test(cur)) { out.push(cur); cur = ''; }
+  }
+  if (cur) out.push(cur);
   return out;
 }
 
-module.exports = { AudioService, sentences };
+module.exports = { AudioService, sentences, clauses };

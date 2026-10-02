@@ -65,6 +65,23 @@ const MATH = [
   hf('breezedeus/pix2text-mfr-1.5', MATH_REV, 'tokenizer.json', 113168, '4ffbeb2143e6a38324bb6111b7a8109530d38a076a8439aa5777535f0a32758a'),
 ];
 
+// Bigfoot's voice, shipped inside the app: Kokoro 82M (Apache 2.0) in its uint8 form, run with ONNX
+// Runtime: twice as fast on a CPU as the smaller 8-bit file, and faster than it speaks on a laptop
+// without a graphics card. Five of its voices: its makers' best three female and two male English ones.
+const VOICE_REV = '1939ad2a8e416c0acfeecc08a694d14ef25f2231';
+const VOICE_REPO = 'onnx-community/Kokoro-82M-v1.0-ONNX';
+const VOICE = [
+  { ...hf(VOICE_REPO, VOICE_REV, 'onnx/model_uint8.onnx', 177464632, '6607a397d77b8514065420b7c1e7320117f7aabfdb45ce15f0050c5b0fe75aea'), file: 'kokoro.onnx' },
+  { ...hf(VOICE_REPO, VOICE_REV, 'tokenizer.json', 3497, '77a02c8e164413299b4b4c403b14f8e0e1c1b727db4d46a09d6327b861060a34'), file: 'tokenizer.json' },
+  ...[
+    ['af_heart', 'd583ccff3cdca2f7fae535cb998ac07e9fcb90f09737b9a41fa2734ec44a8f0b'],
+    ['af_bella', 'f69d836209b78eb8c66e75e3cda491e26ea838a3674257e9d4e5703cbaf55c8b'],
+    ['bf_emma', '669fe0647f9dd04fcab92f1439a40eeb4c8b4ab1f82e4996fe3d918ce4a63b73'],
+    ['am_michael', '1d1f21dd8da39c30705cd4c75d039d265e9bc4a2a93ed09bc9e1b1225eb95ba1'],
+    ['am_fenrir', 'c27989f741f7ee34d273a39d8a595cc0837d35f5ced9a29b7cc162614616df43'],
+  ].map(([id, sha]) => ({ ...hf(VOICE_REPO, VOICE_REV, `voices/${id}.bin`, 522240, sha), file: `${id}.bin` })),
+];
+
 function runtimeFor(arch = process.arch) {
   const r = RUNTIMES[arch === 'arm64' ? 'arm64' : 'x64'];
   return { ...r, url: `${GH}/${r.name}`, tag: RUNTIME_TAG, runtime: true };
@@ -117,4 +134,4 @@ function recommend(hw) {
   return { pick, options };
 }
 
-module.exports = { MODELS, RETIRED, RUNTIME_TAG, WHISPER_TAG, SPEECH, MATH, runtimeFor, modelById, filesFor, downloadBytes, recommend, GB };
+module.exports = { MODELS, RETIRED, RUNTIME_TAG, WHISPER_TAG, SPEECH, MATH, VOICE, runtimeFor, modelById, filesFor, downloadBytes, recommend, GB };

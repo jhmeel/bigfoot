@@ -170,7 +170,7 @@ function strokesFor({ shapes, viewBox }, box, { color, fallbackColor, size, line
   return out;
 }
 
-// ---------------------------------------------------------------- the other way: ink → SVG
+// the other way: ink → SVG
 const INK_SIZES = [2, 4, 8, 14];
 const escapeXml = (s) => String(s).replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]));
 

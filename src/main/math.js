@@ -183,7 +183,7 @@ function nice(v) {
   return format(Number(v.toPrecision(10)));
 }
 
-// ---------------------------------------------------------------- showing the working
+// showing the working
 const SUP = '⁰¹²³⁴⁵⁶⁷⁸⁹';
 /** An expression as people write it: 2·x → 2x, x^2 → x², spaces around = + −. */
 function show(s) {

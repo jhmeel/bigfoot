@@ -20,7 +20,7 @@ const { costOf } = require('../src/main/costs');
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'bigfoot-local-'));
 
-// ---------------------------------------------------------------- recommendation
+// recommendation
 test('the recommended model matches the hardware', () => {
   const rtx4060 = catalog.recommend({ ramGB: 16, vramGB: 8, dedicated: true, freeDiskGB: 200 });
   assert.equal(rtx4060.pick, 'qwen3-vl-8b');
@@ -68,7 +68,7 @@ test('GPU memory is read from the display adapter registry', () => {
   assert.equal(rest.length, 0);
 });
 
-// ---------------------------------------------------------------- resumable download
+// resumable download
 function fileServer(data, { dropAfter = null, ignoreRange = false } = {}) {
   let requests = 0;
   const server = http.createServer((req, res) => {
@@ -174,7 +174,7 @@ test('pausing keeps the partial file and resuming continues it', async () => {
   await m.cancel();
 });
 
-// ---------------------------------------------------------------- local provider
+// local provider
 test('the local model points on a 1000 grid that maps onto the screenshot', () => {
   const p = new LocalProvider({ runtime: {}, model: 'qwen3-vl-8b', system: 'sys', tools: [], screen: { width: 1280, height: 720 } });
   assert.match(p.messages[0].content, /1000x1000 grid/);
@@ -386,7 +386,7 @@ test('local runs are free', () => {
   assert.equal(costOf('qwen3-vl-8b', { input_tokens: 5_000_000, output_tokens: 1_000_000 }).cost, 0);
 });
 
-// ---------------------------------------------------------------- math tool
+// math tool
 test('handwritten arithmetic is evaluated exactly', () => {
   const cases = {
     '12 + 7 =': '19', '3 x 4': '12', '2(3+4)': '14', '-2^2': '-4', '2^3^2': '512', '10 ÷ 4': '2.5',
@@ -518,7 +518,7 @@ test('the saved instructions are always the instructions, even when a math readi
   try {
     const p = newProvider();
     p.onText = () => {};
-    // Tonight's order: the instructions are being read when a math reading comes in.
+    // A math reading arrives while the instructions are being read.
     const warming = p.warm();
     const math = askLocal(runtime, { prompt: 'Read this math', image: 'aGk=' });
     await Promise.all([warming, math]);
@@ -543,5 +543,29 @@ test('the saved instructions are always the instructions, even when a math readi
     assert.equal(await newProvider().warm(), true); // and from then on they're restored
   } finally {
     server.close();
+  }
+});
+
+test('a model already on disk is found and used, so setup never downloads it again', () => {
+  const dir = tmp();
+  const values = { localModel: '' };
+  const settings = { get: (k) => values[k], update: (p) => Object.assign(values, p) };
+  const fake = { id: 'test-vl', label: 'Test VL', files: [{ name: 'm.gguf', size: 5 }, { name: 'mm.gguf', size: 3 }] };
+  catalog.MODELS.push(fake);
+  try {
+    const m = new LocalModelManager({ dir, settings });
+    assert.equal(m.installedId(), ''); // nothing there yet
+    fs.mkdirSync(m.runtimeDir(), { recursive: true });
+    fs.writeFileSync(path.join(m.runtimeDir(), 'llama-server.exe'), 'x');
+    fs.mkdirSync(m.modelDir('test-vl'), { recursive: true });
+    fs.writeFileSync(path.join(m.modelDir('test-vl'), 'm.gguf'), '12345');
+    fs.writeFileSync(path.join(m.modelDir('test-vl'), 'mm.gguf'), '12'); // one byte short: not complete
+    assert.equal(m.installedId(), '');
+    fs.writeFileSync(path.join(m.modelDir('test-vl'), 'mm.gguf'), '123');
+    assert.equal(m.installedId(), 'test-vl'); // found by its files, though settings were empty
+    assert.equal(values.localModel, 'test-vl');
+    assert.equal(m.snapshot().status, 'ready');
+  } finally {
+    catalog.MODELS.splice(catalog.MODELS.indexOf(fake), 1);
   }
 });

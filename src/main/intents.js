@@ -78,4 +78,30 @@ function matchIntent(text) {
   return null;
 }
 
-module.exports = { matchIntent, core };
+const SHELLS = { powershell: 'powershell', 'power shell': 'powershell', cmd: 'cmd', 'command prompt': 'cmd', 'git bash': 'bash', bash: 'bash' };
+const TERMINAL = "(?:the |my |a |bigfoot'?s? |your )?(?:terminal|console|command line)";
+
+/**
+ * "the terminal" is Bigfoot's own (the Terminal page): "open the terminal", "open PowerShell",
+ * "run npm install in the terminal". Done straight away, no model.
+ * @returns {{ kind: 'open', shell: string|null } | { kind: 'run', command: string } | null}
+ */
+function matchTerminal(text) {
+  const t = core(text);
+  if (!t || t.length > 300) return null;
+  let m = new RegExp(`^(?:open|show|go to|bring up|launch|start)(?: up)? ${TERMINAL}(?: page| window| tab)?$`, 'i').exec(t);
+  if (m) return { kind: 'open', shell: null };
+  m = /^(?:open|launch|start)(?: a| the| new)* (powershell|power shell|cmd|command prompt|git bash|bash)(?: tab| window| terminal)?$/i.exec(t);
+  if (m) return { kind: 'open', shell: SHELLS[m[1].toLowerCase()] };
+  m = new RegExp(`^(?:run|execute|type|enter)(?: the command)? (.+?) (?:in|on|inside) ${TERMINAL}$`, 'i').exec(t)
+    || new RegExp(`^(?:in|on) ${TERMINAL},? (?:run|execute|type|enter)(?: the command)? (.+)$`, 'i').exec(t);
+  if (!m || !m[1].trim()) return null;
+  // Quotes around the whole command are the user's, not part of it ("type "dir" in the terminal");
+  // quotes inside it are kept (node -e "console.log(1)").
+  const command = m[1].trim();
+  const wrapped = /^(["“'`])(.*)(["”'`])$/.exec(command);
+  const inner = wrapped && wrapped[2];
+  return { kind: 'run', command: inner && !/["“”'`]/.test(inner) ? inner : command };
+}
+
+module.exports = { matchIntent, matchTerminal, core };
