@@ -111,16 +111,18 @@ The first time the model runs it reads Bigfoot's instructions and tool descripti
 
 ## Building from source
 
-You need Windows 10 or 11 and Node.js 20 or later.
+You need Windows 10 or 11 (x64), Node.js 20 or later, Git, and an internet connection for the first build. The native helper is compiled with the C# compiler that comes with Windows, so no Visual Studio is needed.
 
 ```bash
+git clone https://github.com/jhmeel/bigfoot.git
+cd bigfoot
 npm install
 npm start          # run from source
 npm test           # unit, agent-loop, local AI, plugin, speech and terminal tests
 npm run dist       # build dist\Bigfoot-Setup-<version>.exe
 ```
 
-`npm start` and `npm run dist` compile the native helper when it's missing or out of date, and download the bundled speech recognizer, math reader and voice into `vendor/` (SHA-256 verified, not committed). To rebuild the helper by hand, run `npm run build:native -- --force`.
+`npm start` and `npm run dist` compile the native helper when it's missing or out of date, and download the bundled speech recognizer, math reader and voice into `vendor/` (about 400 MB, SHA-256 verified, not committed). The installer ends up in `dist`. To rebuild the helper by hand, run `npm run build:native -- --force`.
 
 `node test/live-input.js` opens Notepad, types and closes it as a live check. `BIGFOOT_DEMO=1` plays every overlay effect once, and `BIGFOOT_PROFILE_DIR` runs a copy with a separate profile.
 
