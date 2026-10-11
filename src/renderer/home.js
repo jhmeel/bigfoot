@@ -91,7 +91,7 @@
       return;
     }
     if (kind === 'assistant') { finishAssistant(text); return; }
-    // Actions and progress: a quiet list under the conversation, not chat bubbles.
+    // Actions and progress go in a list under the conversation.
     if (!steps) {
       steps = el('div', `steps ${kind === 'error' ? 'error' : ''}`);
       add(steps);

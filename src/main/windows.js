@@ -51,7 +51,7 @@ class WindowManager {
     return null;
   }
 
-  // ------------------------------------------------------------------ overlays (one per display)
+  // overlays (one per display)
   syncOverlays() {
     const displays = screen.getAllDisplays();
     const ids = new Set(displays.map((d) => d.id));
@@ -124,7 +124,7 @@ class WindowManager {
     }
   }
 
-  // ------------------------------------------------------------------ tool tray (double-click the desktop)
+  // tool tray (double-click the desktop)
   showToolTray({ x, y }) {
     const W = 250;
     const H = 88;
@@ -164,7 +164,7 @@ class WindowManager {
     if (this.toolTray && !this.toolTray.isDestroyed() && this.toolTray.isVisible()) this.toolTray.hide();
   }
 
-  // ------------------------------------------------------------------ audio engine (hidden)
+  // audio engine (hidden)
   createEngine() {
     this.engine = new BrowserWindow({
       show: false, width: 200, height: 200, skipTaskbar: true,
@@ -178,7 +178,7 @@ class WindowManager {
     });
   }
 
-  // ------------------------------------------------------------------ the main window
+  // the main window
   // Bigfoot has one window. It shows onboarding on first run, then Home, Settings, and the Terminal.
   get onApp() { return this.main && !this.main.isDestroyed() && this.mainPage === 'app'; }
   get panel() { return this.onApp ? this.main : null; }
@@ -257,7 +257,7 @@ class WindowManager {
 
   resizePanel() { /* the main window is sized by the user */ }
 
-  // ------------------------------------------------------------------ approval alerts (one at a time)
+  // approval alerts (one at a time)
   /** Resolves true when the user allows. */
   askApproval(req, { onShow } = {}) {
     const run = () => new Promise((resolve) => {

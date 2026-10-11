@@ -48,7 +48,7 @@ async function resolveAnswer({ expression, compute }) {
   return { expression, answer: '', exact: false };
 }
 
-// ---------------------------------------------------------------- live handwriting (Windows recognizer)
+// live handwriting (Windows recognizer)
 
 // Only shapes that are rarely a variable; b, q, z, t, s… stay letters so "2b + 1 = 7" is an equation.
 const DIGIT_LOOKALIKES = { l: '1', I: '1', '|': '1', O: '0', o: '0', S: '5', Z: '2', B: '8' };
@@ -123,7 +123,7 @@ function trySolve(text) {
 }
 
 /**
- * Understand what was written.
+ * Interpret the recognizer's readings.
  * @returns {{ text, status, answer?, given?, expression? }} status is one of
  *   'writing' (a sum, no "="), 'answer' (a sum ending with "="), 'right' / 'wrong' (the user's own
  *   answer checked), 'solved' (one unknown, solved here), 'solve' (needs the model), 'unknown'.

@@ -33,7 +33,7 @@
   let current = null;
   let erased = null;
 
-  // ---------------------------------------------------------------- canvas
+  // canvas
   function resize() {
     const dpr = window.devicePixelRatio || 1;
     for (const [c, ctx] of [[baseCanvas, base], [liveCanvas, live]]) {
@@ -160,7 +160,7 @@
     if (current) drawStroke(live, current);
   }
 
-  // ---------------------------------------------------------------- hit testing (eraser)
+  // hit testing (eraser)
   function distToSegment(p, a, b) {
     const dx = b.x - a.x;
     const dy = b.y - a.y;
@@ -202,7 +202,7 @@
     if (keep.length !== strokes.length) { strokes = keep; redrawBase(); }
   }
 
-  // ---------------------------------------------------------------- history
+  // history
   function record(action) {
     undoStack.push(action);
     if (undoStack.length > 200) undoStack.shift();
@@ -254,7 +254,7 @@
     redrawLive();
   }
 
-  // ---------------------------------------------------------------- tidy: rough shapes become perfect ones
+  // shape tidying
   function simplify(pts, eps) {
     if (pts.length < 3) return pts.slice();
     let far = 0;
@@ -269,7 +269,7 @@
 
   const ring = (cx, cy, rx, ry) => Array.from({ length: 73 }, (_, i) => ({ x: cx + rx * Math.cos((i / 72) * Math.PI * 2), y: cy + ry * Math.sin((i / 72) * Math.PI * 2) }));
 
-  /** The perfect version of a hand-drawn line, circle, ellipse, rectangle, triangle, or quadrilateral. */
+  /** Snap a hand-drawn line, circle, ellipse, rectangle, triangle, or quadrilateral to an exact shape. */
   function recognize(pts) {
     if (pts.length < 4) return null;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -323,7 +323,7 @@
     return pts ? { ...s, points: pts, sharp: true, pressure: false } : null;
   }
 
-  // ---------------------------------------------------------------- pointer input
+  // pointer input
   function constrain(tool, a, b) {
     const dx = b.x - a.x;
     const dy = b.y - a.y;
@@ -423,7 +423,7 @@
   layer.addEventListener('pointerup', endStroke);
   layer.addEventListener('pointercancel', endStroke);
 
-  // ---------------------------------------------------------------- cursor preview
+  // cursor preview
   function moveCursor(e) {
     cursor.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
   }
@@ -439,7 +439,7 @@
   layer.addEventListener('pointerleave', () => { cursor.classList.add('away'); });
   layer.addEventListener('pointerenter', () => { cursor.classList.remove('away'); });
 
-  // ---------------------------------------------------------------- toolbar
+  // toolbar
   const colorsEl = $('ink-colors');
   for (const c of COLORS) {
     const b = document.createElement('button');
@@ -468,7 +468,7 @@
   $('ink-clear').addEventListener('click', clearInk);
   $('ink-tidy').addEventListener('click', () => { prefs.tidy = !prefs.tidy; changed(); });
 
-  // ---------------------------------------------------------------- share
+  // share
   const shareMenu = $('ink-share-menu');
   const shareNote = $('ink-share-note');
   function toggleShare(open = shareMenu.hidden) {
@@ -559,7 +559,7 @@
     grip.addEventListener('pointerup', up);
   });
 
-  // ---------------------------------------------------------------- keyboard (the overlay has focus while drawing)
+  // keyboard (the overlay has focus while drawing)
   window.addEventListener('keydown', (e) => {
     if (!active || e.target.closest('input, textarea')) return;
     const k = e.key.toLowerCase();
@@ -575,7 +575,7 @@
     if (e.key === '[' || e.key === ']') { prefs.size = Math.max(0, Math.min(SIZES.length - 1, prefs.size + (e.key === ']' ? 1 : -1))); changed(); }
   });
 
-  // ---------------------------------------------------------------- the AI and the drawing
+  // the AI and the drawing
   function aiEdit(fn) {
     const before = strokes.slice();
     const result = fn();

@@ -174,8 +174,8 @@ class LocalRuntime extends EventEmitter {
 
   /**
    * Requests to the model one at a time, in order. The server has a single conversation slot: a
-   * math reading that slipped in between reading the instructions and saving them got saved in
-   * their place, and every request after that re-read the instructions (15 minutes each).
+   * math reading that slips in between reading the instructions and saving them would be saved in
+   * their place, and every later request would re-read the instructions.
    * slotHolds names what the slot holds now (the saved instructions' file, or null).
    */
   exclusive(fn) {

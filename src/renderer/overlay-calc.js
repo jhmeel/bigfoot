@@ -134,7 +134,7 @@
   });
   input.addEventListener('pointerdown', (e) => e.stopPropagation());
 
-  // ---------------------------------------------------------------- open, close, drag
+  // open, close, drag
   function setOpen(open) {
     panel.hidden = !open;
     toggle.setAttribute('aria-pressed', String(open));

@@ -650,7 +650,7 @@ internal static class ScreenReader
 
 internal static class InputHelper
 {
-    // ------------------------------------------------------------------ Win32
+    // Win32
     [StructLayout(LayoutKind.Sequential)]
     struct POINT { public int X; public int Y; }
 
@@ -725,7 +725,7 @@ internal static class InputHelper
     static readonly object OutLock = new object();
     static long lastInjectTicks;
 
-    // ------------------------------------------------------------------ entry
+    // entry
     [STAThread]
     static int Main()
     {
@@ -818,7 +818,7 @@ internal static class InputHelper
         }
     }
 
-    // ------------------------------------------------------------------ mouse
+    // mouse
     static INPUT Mouse(uint flags, int data)
     {
         INPUT i = new INPUT();
@@ -885,7 +885,7 @@ internal static class InputHelper
         if (l.Count > 0) Send(l);
     }
 
-    // ------------------------------------------------------------------ keyboard
+    // keyboard
     static readonly HashSet<int> ExtendedKeys = new HashSet<int>(new int[] {
         0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2D, 0x2E, // pgup pgdn end home arrows ins del
         0x5B, 0x5C, 0x5D, 0x6F, 0x90, 0xA3, 0xA5, 0x2C             // win menu divide numlock rctrl ralt prtsc
@@ -957,7 +957,7 @@ internal static class InputHelper
         }
     }
 
-    // ------------------------------------------------------------------ global key watcher
+    // global key watcher
     static bool Down(int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; }
 
     static void WatchKeys()

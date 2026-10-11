@@ -13,7 +13,7 @@
 
   UI.titlebar();
 
-  // ------------------------------------------------------------------ navigation
+  // navigation
   const dots = $('dots');
   STEPS.forEach(() => dots.append(document.createElement('i')));
 
@@ -85,7 +85,7 @@
     if (inName || (STEPS[index] === 'welcome' && document.activeElement.tagName !== 'INPUT')) $('next').click();
   });
 
-  // ------------------------------------------------------------------ welcome
+  // welcome
   (() => {
     const bubble = $('hero-bubble');
     const logo = $('hero-logo');
@@ -105,7 +105,7 @@
     }, 900);
   })();
 
-  // ------------------------------------------------------------------ name
+  // name
   function cleanName(v) {
     return String(v).replace(/[^\p{L}\p{M}' -]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 24);
   }
@@ -135,7 +135,7 @@
   $('wake').checked = s.wakeWord;
   $('name').addEventListener('input', renderName);
 
-  // ------------------------------------------------------------------ voice (Bigfoot's own voices)
+  // voice (Bigfoot's own voices)
   let voicesShown = false;
   async function renderVoice() {
     if (voicesShown) return;
@@ -147,7 +147,7 @@
     });
   }
 
-  // ------------------------------------------------------------------ listening
+  // listening
   const drawMeter = UI.meter($('mic-meter'));
   let testing = false;
   let heard = 0;

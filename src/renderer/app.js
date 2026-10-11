@@ -11,7 +11,7 @@
   let s = await api.invoke('settings:get');
   UI.titlebar();
 
-  // ------------------------------------------------------------------ navigation
+  // navigation
   let micTesting = false;
   function show(section) {
     section = ALIASES[section] || section;
@@ -39,7 +39,7 @@
     return el._seg;
   }
 
-  // ------------------------------------------------------------------ Assistant
+  // Assistant
   function renderName() {
     const n = s.assistantName;
     $('hero-name').textContent = n;
@@ -76,7 +76,7 @@
   renderName();
   refreshWake();
 
-  // ------------------------------------------------------------------ Models
+  // Models
   const LLM = {
     anthropic: { label: 'Claude', keyName: 'anthropicKey', keyLabel: 'Anthropic API key', modelSetting: 'model', placeholder: 'sk-ant-…' },
     openai: { label: 'OpenAI', keyName: 'openaiKey', keyLabel: 'OpenAI API key', modelSetting: 'openaiModel', placeholder: 'sk-…' },
@@ -182,7 +182,7 @@
   }
   renderModels();
 
-  // ------------------------------------------------------------------ Voice
+  // Voice
   const speakHint = () => { $('speak-hint').textContent = ''; };
   UI.switchControl($('speak'), s.speakResponses, async (v) => { await update({ speakResponses: v }); speakHint(); });
   speakHint();
@@ -194,7 +194,7 @@
   $('rate').value = s.speechRate;
   $('rate').addEventListener('change', () => update({ speechRate: Number($('rate').value) }));
 
-  // ------------------------------------------------------------------ Microphone
+  // Microphone
 
   const drawMeter = UI.meter($('mic-meter'));
   api.on('level', (l) => { if (micTesting) drawMeter(l); });
@@ -223,7 +223,7 @@
   $('mic-settings').addEventListener('click', () => api.invoke('app:open-link', 'micSettings'));
   window.addEventListener('focus', () => { if (!$('mic-status').closest('[hidden]')) refreshMic(); });
 
-  // ------------------------------------------------------------------ General
+  // General
   UI.switchControl($('show-buddy'), s.showBuddy, (v) => update({ showBuddy: v }));
   UI.switchControl($('sounds'), s.soundEffects, (v) => update({ soundEffects: v }));
   UI.switchControl($('login'), s.launchAtLogin, (v) => update({ launchAtLogin: v }));
@@ -233,7 +233,7 @@
   $('open-plugins').addEventListener('click', () => api.invoke('app:open-plugins'));
   api.invoke('app:info').then((info) => { $('version').textContent = `Version ${info.version}`; });
 
-  // ------------------------------------------------------------------ Plugins
+  // Plugins
   const el = (tag, cls, text) => {
     const n = document.createElement(tag);
     if (cls) n.className = cls;

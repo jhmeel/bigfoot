@@ -315,7 +315,7 @@ class Agent {
     }
   }
 
-  // ------------------------------------------------------------------ tool calls
+  // tool calls
   async runCalls(calls, truncated, signal, provider) {
     const results = [];
     let failed = false;

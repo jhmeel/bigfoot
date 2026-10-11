@@ -65,7 +65,7 @@ window.doubleTapExit = (() => {
     return p && p.x >= 0 && p.y >= 0 && p.x < window.innerWidth && p.y < window.innerHeight;
   };
 
-  // ------------------------------------------------------------------ frame loop
+  // frame loop
   function frame(now) {
     const dt = Math.min((now - lastFrame) / 1000, 1 / 30);
     lastFrame = now;
@@ -112,7 +112,7 @@ window.doubleTapExit = (() => {
     });
   }
 
-  // ------------------------------------------------------------------ flight (quadratic bezier arc)
+  // flight (quadratic bezier arc)
   function flyTo(dest, onDone) {
     const start = { ...pos };
     const dist = Math.hypot(dest.x - start.x, dest.y - start.y);
@@ -202,7 +202,7 @@ window.doubleTapExit = (() => {
     }
   }
 
-  // ------------------------------------------------------------------ bubble
+  // bubble
   let bubbleToken = 0;
   let bubbleNav = false;
   let pendingBubble = null; // text that arrived while pointing; shown when the buddy is back
@@ -254,7 +254,7 @@ window.doubleTapExit = (() => {
     });
   }
 
-  // ------------------------------------------------------------------ banner
+  // banner
   let bannerTimer = null;
   let bannerToken = 0;
   function showBanner({ kind, title, message, displayId: target }) {
@@ -290,13 +290,13 @@ window.doubleTapExit = (() => {
     setTimeout(type, 280);
   }
 
-  // ------------------------------------------------------------------ welcome
+  // welcome
   function welcome({ text }) {
     if (!onThisScreen()) return;
     setTimeout(() => typeBubble(text, { speed: [30, 30], ttl: 2000 }), 2000);
   }
 
-  // ------------------------------------------------------------------ wiring
+  // wiring
   api.on('cursor', (p) => { cursorGlobal = p; });
   const $fx = document.getElementById('buddy-fx');
   function feel(kind) {

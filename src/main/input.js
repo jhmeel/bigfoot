@@ -127,7 +127,7 @@ class InputHelper extends EventEmitter {
     if (this.proc) this.proc.kill();
   }
 
-  // ---- commands (coordinates are physical screen pixels)
+  // commands (coordinates are physical screen pixels)
   move(x, y) { return this.send('move', Math.round(x), Math.round(y)); }
   click(button = 'left', count = 1) { return this.send('click', button, count); }
   mouseDown(button = 'left') { return this.send('down', button); }

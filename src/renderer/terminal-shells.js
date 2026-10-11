@@ -23,7 +23,7 @@
   };
   const ICON_X = '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5"/></svg>';
 
-  // ------------------------------------------------------------------ tabs
+  // tabs
   function select(id) {
     active = id;
     document.querySelectorAll('#term-tabs .term-tab').forEach((t) => t.classList.toggle('active', String(t.dataset.tab) === String(id)));
@@ -72,7 +72,7 @@
     }
   }
 
-  // ------------------------------------------------------------------ one terminal
+  // one terminal
   function fit(v) {
     if (!v.view.offsetParent || !v.host.clientWidth) return; // hidden
     try {
@@ -170,7 +170,7 @@
     if (active === id) select(views.size ? [...views.keys()].pop() : 'activity');
   }
 
-  // ------------------------------------------------------------------ new-terminal menu
+  // new-terminal menu
   $('term-add').addEventListener('click', (e) => {
     e.stopPropagation();
     if (!menu.hidden) { menu.hidden = true; return; }
@@ -188,7 +188,7 @@
   });
   document.addEventListener('click', () => { menu.hidden = true; });
 
-  // ------------------------------------------------------------------ from the main process
+  // from the main process
   api.on('term:data', ({ id, data }) => { const v = views.get(id); if (v) v.term.write(data); });
   // "open the terminal" / "run … in the terminal": show that tab.
   api.on('term:focus', async (id) => {

@@ -17,7 +17,7 @@
     return ctx;
   };
 
-  // ------------------------------------------------------------------ microphone
+  // microphone
   let stream = null;
   let source = null;
   let processor = null;
@@ -150,7 +150,7 @@
     return { wav: encodeWav(r.chunks), heardSpeech: r.heardSpeech };
   }
 
-  // ------------------------------------------------------------------ speech
+  // speech
   let currentAudio = null;
   let finishSpeech = null;
 
@@ -223,7 +223,7 @@
     });
   }
 
-  // ------------------------------------------------------------------ outline drawing
+  // outline drawing
   /** Draw the user's traced outline onto a screenshot so the model sees exactly what they marked. */
   async function markImage({ png, points }) {
     const bitmap = await createImageBitmap(new Blob([png], { type: 'image/png' }));
@@ -262,7 +262,7 @@
     return (await canvas.convertToBlob({ type: 'image/png' })).arrayBuffer();
   }
 
-  // ------------------------------------------------------------------ UI sounds, synthesized
+  // UI sounds, synthesized
   function tone(c, { freq, start, dur, type = 'sine', gain = 0.12, to = null, lp = null }) {
     const osc = c.createOscillator();
     const g = c.createGain();
@@ -299,7 +299,7 @@
     attention: (c, t) => { tone(c, { freq: 1047, start: t, dur: 0.28, gain: 0.07 }); tone(c, { freq: 1568, start: t, dur: 0.18, gain: 0.025 }); },
   };
 
-  // ------------------------------------------------------------------ commands from the main process
+  // commands from the main process
   const COMMANDS = {
     'record-start': recordStart,
     'record-stop': async () => recordStop(),

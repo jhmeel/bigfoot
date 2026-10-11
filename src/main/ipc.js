@@ -27,7 +27,7 @@ function microphoneStatus() {
 function registerIpc({ controller, windows, settings, agent, audio, activity, plugins, pluginManager, logger, costs, local, runtime, terminals }) {
   const handle = (channel, fn) => ipcMain.handle(channel, (event, ...args) => fn(...args, event));
 
-  // ---- settings
+  // settings
   handle('settings:get', () => settings.publicView());
   handle('settings:update', (patch) => settings.update(patch));
   // Validates a candidate key (or the saved one) for a model provider.
@@ -60,7 +60,7 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
     return { id, label: llm.describe(settings, id), online };
   });
 
-  // ---- local AI
+  // local AI
   handle('local:hardware', async () => {
     const hw = await hardware.detect(app.getPath('userData'));
     return { hardware: hw, ...catalog.recommend(hw) };
@@ -71,7 +71,7 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
   handle('local:resume', () => local.resume());
   handle('local:cancel', () => local.cancel());
 
-  // ---- tool tray and math
+  // tool tray and math
   handle('toolbar:pick', (tool) => { controller.pickTool(tool); return true; });
   handle('math:read', (png) => controller.readMath(png));
   handle('math:ink', (strokes, image) => controller.readMathInk(strokes, image));
@@ -90,7 +90,7 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
   ipcMain.on('ink:state', (event, state) => controller.onInkState(windows.displayIdOf(event.sender), state || {}));
   ipcMain.on('ink:passthrough', (event, on) => controller.setInkPassthrough(windows.displayIdOf(event.sender), Boolean(on)));
 
-  // ---- voice
+  // voice
   // Bigfoot's own voices (./kokoro): the choice in setup and on the Voice page.
   handle('voices:list', () => ({ ok: true, voices: VOICES }));
   handle('voice:stop', () => { audio.stopSpeaking(); return true; });
@@ -109,21 +109,21 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
   });
   handle('wake:status', async () => ({ enabled: settings.get('wakeWord'), active: await controller.refreshWakeWord() }));
 
-  // ---- tasks
+  // tasks
   handle('task:run', (text) => controller.runTask(text, 'typed'));
   handle('task:stop', () => { controller.stopTask(); return true; });
   handle('conversation:reset', () => agent.reset());
   handle('select:start', () => controller.startPanelSelection());
   handle('region:clear', () => { controller.clearRegion(); return true; });
 
-  // ---- windows & app
+  // windows & app
   handle('app:open-settings', (section) => { windows.openSettings(section); return true; });
   handle('app:open-onboarding', () => { windows.openOnboarding(); return true; });
   handle('app:quit', () => app.quit());
   handle('app:open-logs', () => shell.openPath(logger.dir));
   handle('app:open-plugins', () => { pluginManager.ensureFolder(); return shell.openPath(plugins.userDir); });
 
-  // ---- plugins
+  // plugins
   handle('plugins:list', () => pluginManager.list());
   handle('plugins:pick', async (event) => {
     const template = pluginManager.ensureFolder();
@@ -157,10 +157,10 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
   handle('window:minimize', (event) => { const w = BrowserWindow.fromWebContents(event.sender); if (w) w.minimize(); });
   handle('panel:resize', (height) => windows.resizePanel(height));
 
-  // ---- Bigfoot Terminal
+  // Bigfoot Terminal
   handle('terminal:open', () => { windows.openTerminal(); return true; });
 
-  // ---- real terminals (./terminals): the Terminal page's tabs
+  // real terminals (./terminals): the Terminal page's tabs
   handle('term:shells', () => terminals.shells());
   handle('term:list', () => terminals.list());
   handle('term:create', (opts = {}) => terminals.create({ shell: String(opts.shell || 'powershell'), cols: Number(opts.cols) || 100, rows: Number(opts.rows) || 30 }));
@@ -180,7 +180,7 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
   handle('terminal:clear', () => { activity.clear(); return true; });
   handle('terminal:reveal', () => shell.showItemInFolder(logger.activityLog));
 
-  // ---- fire-and-forget messages from renderers
+  // fire-and-forget messages from renderers
   ipcMain.on('overlay:region', (event, rect) => controller.onRegionSelected(windows.displayIdOf(event.sender), rect));
   ipcMain.on('overlay:region-ask', (_e, text) => controller.askAboutRegion(typeof text === 'string' ? text.trim().slice(0, 4000) : ''));
   ipcMain.on('overlay:ready', (event) => {

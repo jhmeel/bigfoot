@@ -165,7 +165,7 @@ class AudioService extends EventEmitter {
     this.call('stop-audio', {}, 3000).catch(() => {});
   }
 
-  // ---------------------------------------------------------------- speaking a reply as it's written
+  // speaking a reply as it's written
   /** Start a reply that arrives in pieces. */
   beginStream() {
     this.stream = { heard: new Set(), queue: Promise.resolve('none'), used: 'none' };

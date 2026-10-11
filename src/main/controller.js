@@ -48,7 +48,7 @@ class Controller {
 
   get name() { return this.settings.get('assistantName'); }
 
-  // ------------------------------------------------------------------ state & feedback
+  // state & feedback
   setState(next) {
     this.state = next;
     this.windows.broadcast('state', next);
@@ -58,7 +58,7 @@ class Controller {
     this.pauseWakeWord(next === 'processing' || next === 'acting');
   }
 
-  // ------------------------------------------------------------------ Talk (continuous voice)
+  // Talk (continuous voice)
   setVoiceMode(on) {
     if (on === this.voiceMode) return;
     if (on && !this.requireKey()) return;
@@ -167,7 +167,7 @@ class Controller {
     return false;
   }
 
-  // ------------------------------------------------------------------ wake word
+  // wake word
   async refreshWakeWord() {
     const want = this.settings.get('wakeWord') && this.settings.get('onboarded');
     try {
@@ -210,7 +210,7 @@ class Controller {
     this.startListening('wake');
   }
 
-  // ------------------------------------------------------------------ hold-to-talk
+  // hold-to-talk
   onKeys({ ctrl, alt, shift, win }) {
     const down = ctrl && alt && !shift && !win;
     if (down && !this.pttDown) {
@@ -357,7 +357,7 @@ class Controller {
     }
   }
 
-  // ------------------------------------------------------------------ area selection
+  // area selection
   setSelecting(mode) {
     this.selecting = mode;
     if (mode === 'panel' && this.ink) this.stopInk();
@@ -440,7 +440,7 @@ class Controller {
     return this.settings.get('screenDetail') === 'standard' ? 1366 : 1920;
   }
 
-  // ------------------------------------------------------------------ tool tray and math
+  // tool tray and math
   onDesktopDoubleClick(physical) {
     if (!this.settings.get('toolTray') || !this.settings.get('onboarded')) return;
     if (this.selecting || (this.ink && !this.inkThrough)) return;
@@ -740,7 +740,7 @@ class Controller {
     }
   }
 
-  // ------------------------------------------------------------------ tasks
+  // tasks
   stopTask() {
     if (!this.agent.running) return;
     this.agent.stop();

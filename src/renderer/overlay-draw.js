@@ -26,7 +26,7 @@
     el('path', { d: 'M1,1.5 L10,6 L1,10.5 Q3,6 1,1.5 Z', fill: color }, m);
   }
 
-  /** Stroke draw-on animation, like a pen tracing the shape. */
+  /** Stroke draw-on animation. */
   function drawOn(node, ms = 550) {
     const len = node.getTotalLength ? node.getTotalLength() : 0;
     if (!len) return;
@@ -106,7 +106,7 @@
         const b = box();
         const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
         const rx = b.w / 2 + 10, ry = b.h / 2 + 10;
-        // a hand-drawn loop that overshoots its start, like circling something with a pen
+        // a loop that overshoots its start
         const loop = [];
         for (let i = 0; i <= 44; i++) {
           const t = (i / 40) * Math.PI * 2 - Math.PI * 0.6;
@@ -120,7 +120,7 @@
       case 'arrow':
       case 'line': {
         const [p, q] = pts;
-        // gentle curve so arrows read as drawn, not ruled
+        // slight curve on arrows
         const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
         const len = Math.hypot(q.x - p.x, q.y - p.y);
         const bend = a.shape === 'arrow' ? Math.min(len * 0.12, 40) : 0;
@@ -168,7 +168,7 @@
   }
   function clearAll() { [...items].forEach(remove); }
 
-  // ------------------------------------------------------------------ lasso selection
+  // lasso selection
   // The user drags to trace around something; a glowing line follows the cursor, then closes into
   // a softly filled outline. Its bounding box and points go to the main process for recognition.
   const layer = document.getElementById('select-layer');
@@ -254,7 +254,7 @@
     }
   });
 
-  // ---------------------------------------------------------------- asking about the marked area
+  // asking about the marked area
   const askForm = document.getElementById('region-ask');
   const askInput = document.getElementById('region-ask-input');
 
