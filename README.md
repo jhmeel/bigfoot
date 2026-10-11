@@ -18,7 +18,8 @@
 </p>
 
 <p align="center">
-  <a href=".github/media/bigfoot-launch.mp4"><img src=".github/media/launch-poster.jpg" width="720" alt="Watch the 30-second Bigfoot film"></a>
+  <a href=".github/media/bigfoot-launch.mp4"><img src=".github/media/bigfoot-launch.webp" width="800" alt="Bigfoot in 30 seconds: offline voice, handwritten math and a web page explained, all on the PC"></a>
+  <br><sub><a href=".github/media/bigfoot-launch.mp4">Watch with sound (MP4, 0:30)</a></sub>
 </p>
 
 <p align="center">
