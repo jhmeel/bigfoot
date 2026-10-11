@@ -4,8 +4,16 @@
   "version": "1.4.8",
   "description": "An AI assistant that lives next to your cursor, sees your screen, talks, and operates your computer.",
   "main": "src/main/main.js",
-  "author": "Bigfoot",
-  "license": "UNLICENSED",
+  "author": "jhmeel",
+  "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jhmeel/bigfoot.git"
+  },
+  "homepage": "https://github.com/jhmeel/bigfoot#readme",
+  "bugs": {
+    "url": "https://github.com/jhmeel/bigfoot/issues"
+  },
   "private": true,
   "scripts": {
     "build:native": "node scripts/build-native.js",

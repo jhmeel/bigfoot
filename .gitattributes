@@ -2,5 +2,7 @@
 *.cs text eol=crlf
 *.nsh text eol=crlf
 *.png binary
+*.jpg binary
+*.mp4 binary
 *.ico binary
 *.woff2 binary

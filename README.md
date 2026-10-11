@@ -1,283 +1,177 @@
-# Bigfoot
+<p align="center">
+  <img src="build/icon.png" width="128" height="128" alt="Bigfoot logo">
+</p>
 
-An AI assistant that lives next to your cursor on Windows. It sees your screen, talks with you,
-points at and draws on things, and operates your computer: opening apps, clicking, typing,
-managing files, and running commands. Its AI runs on your PC, so it's private and works offline.
+<h1 align="center">Bigfoot</h1>
 
-## Install
+<p align="center">
+  An assistant that lives next to your cursor on Windows. It sees your screen, talks with you,<br>
+  draws on things, solves the math you write, and operates your computer.<br>
+  Its AI runs on your PC, so it's private and works offline.
+</p>
 
-Run `Bigfoot-Setup-<version>.exe`. It installs for the current user (no admin rights), lets you pick
-the folder, adds Start menu and desktop shortcuts, and opens Bigfoot when it finishes. Setup then
-walks through naming your assistant, choosing a voice, checking the microphone, and installing the
-AI that runs on your PC.
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License: GPL-3.0"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078d4" alt="Platform: Windows 10 and 11">
+  <img src="https://img.shields.io/badge/electron-38-47848f" alt="Electron 38">
+  <img src="https://img.shields.io/badge/version-1.4.8-informational" alt="Version 1.4.8">
+</p>
 
-> The installer isn't code-signed yet, so Windows SmartScreen shows "Windows protected your PC".
-> Choose **More info › Run anyway**. Sign the build before distributing it (see Releasing).
+<p align="center">
+  <a href=".github/media/bigfoot-launch.mp4"><img src=".github/media/launch-poster.jpg" width="720" alt="Watch the 30-second Bigfoot film"></a>
+</p>
 
-Uninstalling asks whether to also delete your settings and the downloaded model (kept by default,
-so reinstalling doesn't mean downloading it again). Updates never ask.
+<p align="center">
+  <img src=".github/screens/draw.jpg" alt="Draw on the screen: you circle a spot and write 'a bird here', and Bigfoot draws it">
+</p>
 
-## The AI on your PC
+## What it does
 
-The last setup step checks your GPU, memory, and disk and recommends a Qwen3-VL size:
+- **Talks.** Hold <kbd>Ctrl</kbd>+<kbd>Alt</kbd> to speak, or say "Hey Bigfoot". Speech is recognized by Whisper and answered in one of five built-in voices, all on your PC.
+- **Uses your computer.** It opens apps, clicks, types, scrolls, manages files, searches the web and runs commands. It reads the screen the way screen readers do, so it clicks real buttons instead of guessing positions from a picture.
+- **Draws.** Annotate anything on screen with a pen, highlighter, shapes and arrows. Ask Bigfoot to neaten, label or add to your drawing, and its edits land in your drawing, where Undo works on them.
+- **Solves math.** Write an equation anywhere on the screen and press Solve. Answers come from an exact solver and a symbolic engine with the working shown step by step, never from the AI guessing.
+- **Writes code.** Real PowerShell, Command Prompt and Git Bash terminals. Bigfoot writes files, runs builds and tests in its own tab, and starts dev servers you can open with one click.
+- **Stays private.** With the local model, screenshots and speech never leave your PC. Cloud models (Claude or OpenAI) are optional and use your own key.
+
+## Screens
+
+| | |
+|---|---|
+| ![Home: a chat with Bigfoot, with each action it took listed under the request](.github/screens/home.png) | ![Terminal: Bigfoot's own tab running a Vite dev server, with a localhost button](.github/screens/terminal.png) |
+| **Home.** A chat, with every action listed under the request. | **Terminal.** Real shells; Bigfoot works in its own tab. |
+| ![Models: hardware check and the recommended Qwen3-VL size](.github/screens/models.png) | ![Voice: five built-in voices with previews](.github/screens/voice.png) |
+| **Models.** Checks your hardware and recommends a model size. | **Voice.** Five built-in voices, made on your PC. |
+
+<p align="center">
+  <img src=".github/screens/math.jpg" alt="Math: handwritten equations solved with the working shown, and the calculator computing an integral">
+  <br><b>Math.</b> Handwriting read and solved with the working, plus a scientific calculator that does algebra and calculus.
+</p>
+
+## Technical specs
+
+| | |
+|---|---|
+| Platform | Windows 10 and 11, x64 |
+| App | Electron 38, Node.js, plain HTML/CSS/JS renderer with a context-isolated preload bridge |
+| Native helper | C# (`InputHelper.cs`), compiled at build time with the compiler that ships with Windows: `SendInput`, UI Automation, wake word, Windows Math Recognizer |
+| Local AI | Qwen3-VL 4B, 8B or 30B-A3B (GGUF, Q4_K_M with Q8_0 vision projector), served by llama.cpp b11276 (Vulkan on x64, CPU on ARM64) on 127.0.0.1 with a per-session key |
+| Cloud AI (optional) | Anthropic Claude or OpenAI, with your own API key; used only when online |
+| Speech to text | whisper.cpp b5130 with the English base model (q8_0), bundled |
+| Text to speech | Kokoro 82M v1.0 (ONNX, uint8) on ONNX Runtime 1.21, on a worker thread; five voices |
+| Handwritten math | Pix2Text MFR 1.5 (ONNX), with Windows Math Recognizer and the handwriting recognizer as fallbacks |
+| Math engines | Exact arithmetic and equation solver (`math.js`), symbolic algebra and calculus with nerdamer |
+| Screen reading | Windows UI Automation: the front window's elements, names, states and positions in about 0.3 s |
+| Terminals | node-pty (ConPTY) with xterm.js 6 |
+| Downloads | Resumable, every file pinned to an exact upstream revision and checked against its SHA-256 |
+| Secrets | API keys encrypted with Windows DPAPI (`safeStorage`), never sent to the UI |
+| Installer | NSIS via electron-builder, per-user, no admin rights |
+
+### Choosing a model
+
+The last setup step checks your GPU, memory and disk and recommends a size. You can switch at any time without restarting.
 
 | Size | Download | Good for |
 |---|---|---|
-| 4B | ~2.8 GB | The minimum: laptops without a graphics card (8 GB RAM or more), 4–6 GB graphics cards |
-| 8B | ~5.4 GB | 8 GB graphics cards (e.g. RTX 4060) |
-| 30B | ~18 GB | 20 GB+ graphics cards |
+| 4B | ~2.8 GB | PCs without a graphics card (8 GB RAM or more), and 4–6 GB graphics cards |
+| 8B | ~5.4 GB | 8 GB graphics cards, such as an RTX 4060 |
+| 30B | ~18 GB | 20 GB graphics cards and up |
 
-4B is the smallest size offered: 2B was too weak at choosing actions and tended to describe what it
-would do instead of doing it. An existing 2B install is removed and replaced with the recommended
-size automatically. Switching models needs no restart: the new one is loaded straight away and the
-old one (and its saved prompts) deleted.
+The model runs in RAM, not on disk. 4B needs about 3 GB of free memory; on an 8 GB PC with a browser open it loads and answers slowly because Windows starts swapping, so closing heavy apps helps a lot. On PCs with less than 12 GB, Bigfoot uses a compressed working memory and a single copy of the weights to fit.
 
-**Memory matters more than disk.** The model runs in RAM, not on disk. 4B needs about 3 GB of free
-RAM; on an 8 GB PC with a browser and other apps open it can load slowly and answer slowly, because
-Windows starts swapping. On PCs under 12 GB Bigfoot uses a smaller, compressed working memory and a
-single copy of the weights to fit. Closing heavy apps (browser tabs especially) makes a big
-difference.
-
-**Startup:** Bigfoot loads speech recognition first (a few seconds), then the AI. A small card in the
-corner of the screen, and a bar in the chat, show each step and the percentage until it says
-"Bigfoot is ready". You can type meanwhile; the answer comes as soon as it's loaded. A load that is
-still making progress is never cut off; if it truly fails, the chat offers **Try Again**.
-
-**First use:** every request includes Bigfoot's instructions and the descriptions of all its tools
-(about 3,500 tokens), so the model can choose the right tool. The model reads them once, the first
-time ("Getting Bigfoot ready for first use"; about 8–10 minutes on a laptop without a graphics card,
-seconds with one), and Bigfoot saves the result. Every later start restores it in about a second,
-and each request only has to read what you said. Nothing is left out to make it faster.
-
-You can keep using Bigfoot while it downloads; a banner in the main window shows progress with
-Pause, Resume, and Retry. Losing the connection, going offline, or quitting never restarts the
-download: it continues from the bytes already saved. Every file is pinned to an exact upstream
-revision and checked against its SHA-256 before it's installed.
-
-| Source | Link |
-|---|---|
-| Qwen3-VL GGUF models (Apache-2.0) | https://huggingface.co/Qwen |
-| llama.cpp runtime b11276 (MIT) | https://github.com/ggml-org/llama.cpp/releases/tag/b11276 |
-| whisper.cpp b5130 and its English base model (MIT), bundled in the installer | https://github.com/ggml-org/whisper.cpp |
-| Tabler Icons 3.48 (MIT), bundled | https://tabler.io/icons |
-| Kokoro 82M v1.0 ONNX (Apache 2.0), voice, bundled | https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX |
-| phonemizer.js 1.2.1 (Apache 2.0; includes eSpeak NG, GPL 3.0) | https://github.com/xenova/phonemizer.js |
-| Pix2Text MFR 1.5 (MIT), handwritten math, bundled | https://huggingface.co/breezedeus/pix2text-mfr-1.5 |
-
-**Cloud models (optional).** Settings › Models can use Claude or OpenAI with your own API key.
-They need an internet connection; whenever you're offline, Bigfoot uses the model on your PC.
-Cloud models are stronger at long, multi-step work in other apps.
-
-**Speed.** The model loads when Bigfoot starts and stays loaded (Settings › Models › Keep the AI
-loaded), and it's restarted automatically if it ever crashes. Its fixed instructions are read once
-and saved to disk, so later starts are ready in about a second; replies appear word by word; and
-on PCs without a graphics card it runs on the CPU with smaller screenshots, at lower priority and
-one core short, so Windows stays responsive. Measured on an 8 GB laptop without a graphics card
-(i5-8350U): a chat answer in about 8 seconds, a question about the screen in about 30. With a
-graphics card it's a few seconds per step.
-
-**Reading the screen.** Bigfoot reads the screen the way screen readers do (Windows UI Automation):
-the front window's buttons, links, text boxes, tabs, menus and text, with their names, states and
-exact positions, in about half a second. The AI is shown the elements that matter for the request
-and acts on them by number; Bigfoot clicks their real centres and reports what changed, so it never
-guesses positions from a picture. Simple commands ("click Sign in", "scroll down", "go back",
-"press Enter") run straight away without the AI. Screenshots are still used for pictures, drawings,
-marked areas, and apps that draw everything themselves (games, canvas apps, remote desktops).
-
-**Voice.** Bigfoot speaks with its own voice, made on this PC by Kokoro 82M (Apache 2.0) and run on
-the CPU with ONNX Runtime: five voices (Heart, Bella and Emma; Michael and Fenrir), chosen in setup
-and on the Voice page. Long replies are spoken in short pieces, each made while the one before it
-plays. Windows’ voice is used only if Bigfoot’s voice fails. Speech is recognized by Whisper on this PC.
-
-**Handwritten math.** The math tool reads handwriting with Pix2Text MFR 1.5 (MIT), bundled and run
-on the CPU with ONNX Runtime: about a second per line.
+The first time the model runs it reads Bigfoot's instructions and tool descriptions once (about 3,500 tokens) and saves the result, so every later start is ready in about a second. On an 8 GB laptop without a graphics card (i5-8350U) a chat answer takes about 8 seconds and a question about the screen about 30; with a graphics card each step takes a few seconds.
 
 ## Using it
 
 | | |
 |---|---|
-| Hold **Ctrl + Alt** | Push to talk; let go when you're done |
-| Hold **Ctrl + Alt** and drag | Highlight an area of the screen to ask about |
+| Hold <kbd>Ctrl</kbd>+<kbd>Alt</kbd> | Push to talk; let go when you're done |
+| Hold <kbd>Ctrl</kbd>+<kbd>Alt</kbd> and drag | Mark an area of the screen to ask about |
 | Say "Hey Bigfoot" (or the name you chose) | Start talking hands-free |
-| The paw next to your cursor | That's Bigfoot: it listens, thinks, and flies to point at things |
-| Double-click an empty spot on the desktop | Open the tool tray |
-| **Esc** | Stop what Bigfoot is doing, turn Talk off, then close the open tool |
-| Tray icon | Open Bigfoot, Settings, or the Terminal |
+| Double-click an empty spot on the desktop | Open the tool tray: Talk, Point, Draw, Math, Type, Clear |
+| <kbd>Esc</kbd> | Stop what Bigfoot is doing, then close the open tool |
 | Mouse into the top-left corner | Emergency stop while it's controlling the mouse |
 
-### Tool tray
+**Talk** stays on until you turn it off, so you can say one request after another, and it works alongside the other tools: draw a circle, then say "neaten my circle" and "add an arrow to it".
 
-**Talk**, **Point** (ask about an area), **Draw**, **Math**, **Type**, and **Clear**. The tray closes
-when you pick a tool, click away, or after a few seconds.
+**Draw** has a pen (pressure-sensitive with a stylus), highlighter, brush, eraser, line, arrow, rectangle and ellipse, eight colors and four sizes. **Tidy** turns rough lines, circles, rectangles and triangles into clean shapes as you finish them. Bigfoot can draw from a built-in library of pictures and more than 5,000 Tabler icons, or write its own SVG for anything else. **Share** copies the screen with your drawing, or saves it as PNG or SVG.
 
-**Talk** stays on: say one request after another. It pauses while Bigfoot works or speaks, then
-listens again, until you tap Talk, press Esc, or say "stop listening". It works alongside every
-other tool, so you can draw and say "neaten my circle", then "add an arrow to it".
+**Math** reads your handwriting as you write and shows the clean reading under it; tap it to fix a misread symbol. Sums are computed exactly, an answer you wrote yourself is checked, and equations (including several unknowns or several lines solved together), derivatives, integrals, limits, sums and vectors are solved with the working shown. The **calculator** on the Math bar is a scientific calculator that also takes x, y, d/dx and ∫.
 
-**Draw** annotates the screen: pen (pressure-sensitive with a stylus), highlighter, brush, eraser,
-line, arrow, rectangle, and ellipse (Shift constrains), eight colors, four sizes, undo/redo, and
-clear. **Pointer** keeps the drawing on screen while your clicks go to your apps. Drag the toolbar by
-its grip. The AI sees your drawing and can change it: ask it to correct, neaten, label, or improve
-it, and its edits land in your drawing, where Undo works on them. Ask it to draw something ("draw a
-bird", "a heart here") and it draws a clean picture from its built-in library (bird, heart, star,
-smiley, sun, house, tree, flower, cat, fish, cloud, moon, car, boat, mountain, apple, balloon,
-butterfly, person, arrow, check, cross, question mark), plus more than 5,000 icons from Tabler Icons
-(animals, food, transport, buildings, devices, tools, weather, sports, symbols). For anything else,
-or a colored illustration, the AI writes its own SVG (paths, circles, rectangles, polygons, with
-strokes and fills), which becomes ordinary ink you can undo or erase.
-
-**Tidy** (wand button or T): rough lines, circles, ellipses, rectangles, triangles, and diamonds
-become perfect shapes as you finish them. With Tidy off, hold the pen still for half a second at the
-end of a stroke to snap just that one. Handwriting, scribbles, and other shapes are left as drawn.
-Ask the AI to "neaten my drawing" to tidy everything at once. The AI can also read your whole
-drawing as SVG code, edit it (recolor, fix, restyle, add labels), and put it back in place.
-
-**Share** (share button or Ctrl+C in Draw): copy the screen with your drawing to paste anywhere
-(chat, email, documents), or save it to Pictures › Bigfoot as a PNG picture or as an SVG vector file.
-Shortcuts: V P H B E L A R O for tools, 1–8 for colors, [ ] for size, Ctrl+Z / Ctrl+Y, Delete to
-clear, Esc to close.
-
-**Math**: write math anywhere on the screen. It's read by Windows' own **Math Recognizer** (the
-engine behind the Math Input Panel), which understands math layout: a small raised number is a
-power (x²), a stacked fraction is a fraction, √ is a root, and x is a letter while × is times. It
-runs invisibly in the background in under a second; you keep writing on the screen. (Where it isn't
-installed, Bigfoot falls back to the plain handwriting recognizer.) The clean reading appears under
-your writing; if a symbol was misread, tap the reading, fix it, and press Enter. Press **Solve**
-next to an expression (or **Solve all**, or Enter). "=" never means "answer" by itself: sums are
-computed exactly, a sum with your own answer (12 + 7 = 19) is checked (✓, or the right answer), and
-equations with one unknown, such as 2x + 1 = 7, 3x + 2 = 2x + 5, or x² − 5x + 6 = 0, are solved on
-your PC in an instant. So are equations with several unknowns (2x + 2y = 6 → y = 3 − x), equations
-on separate lines solved together (x + y = 5 and x − y = 1 → x = 3, y = 2), and powers written as a
-small raised number (x², 2ˣ). Derivatives (d/dx), integrals (∫ … dx, with limits), limits, sums, and
-vectors (dot and cross products, [1,2,3] notation) are computed exactly by a symbolic math engine
-(nerdamer, MIT) on your PC; when the handwriting is too complex for Windows to read, the AI model
-only *reads* it and the engine still does the math, so answers are never guessed. For equations,
-systems, calculus, and vectors the **working** is shown step by step under the answer. Numbers
-written with gaps ("0", then "100", then "×" between them) join into one expression.
-
-**Calculator** (calculator button on the Math bar): a standard scientific calculator you can drag
-anywhere: DEG/RAD, 2nd for inverse functions (sin⁻¹, x³, ∛, 10ˣ, eˣ), x², xʸ, √, log, ln, n!, π, e,
-Ans, ×10ˣ, plus x, y, the equation sign, d/dx and ∫ for algebra and calculus, with the working shown.
-Results and errors match a standard calculator (tan 90° is undefined, −2² = −4). Each solved
-expression on screen has **Share**, which copies the problem, answer, and working to paste anywhere.
-Answers sit below what you wrote and always stay on the screen.
-
-**Instant commands:** "search for …", "open Chrome and search for …", "play … on YouTube", "go to
-amazon.com", "open Spotify" run immediately without waiting for the AI. If you add a next step
-("… and browse their menu"), the search opens at once and the AI continues from the results.
-
-**Closing a tool:** Esc, the tool's ✕, or double-click an empty part of the screen.
-
-**Point** (or Ctrl + Alt and drag): circle part of the screen and a small box appears right beside
-it. Type your question and press Enter, or just speak if Talk is on. The Bigfoot window stays where
-it is, and the mark fades once the question is taken. The area you marked appears as a picture with
-your question in the chat.
-
-The Home window is a chat with Bigfoot. It stays open while you chat and steps aside only when
-Bigfoot starts using the mouse or keyboard.
-
-## Voice
-
-- **Hearing you:** Whisper, running on your PC and bundled with Bigfoot: offline, private, and
-  accurate (about 2–5 seconds per sentence on a laptop without a graphics card). The "Hey Bigfoot"
-  wake word uses Windows' lightweight keyword spotter.
-- **Talking back:** Bigfoot’s own voice, built in and offline: five voices to choose from. Bigfoot
-  starts speaking each sentence as soon as it's written, while the rest of the reply is still coming,
-  and every reply is also typed out next to the cursor. Turn speech off in Settings › Voice.
-
-## Terminal
-
-The Terminal page has real terminals: PowerShell, Command Prompt, PowerShell 7 and Git Bash in tabs
-(a pseudo-console, as in VS Code), with colours, interactive programs, Ctrl+C, copy and paste, and
-clickable links. Next to them, Activity lists everything Bigfoot did.
-
-- Say or type "open the terminal", "open PowerShell", or "run npm install in the terminal": done
-  at once, in your own tab (commands are shown for approval first).
-- The AI writes code with the file tools, runs commands, builds and tests in its own "Bigfoot" tab
-  you can watch (it keeps its folder between commands, and checks every exit code), and starts
-  dev servers in tabs of their own. A server's localhost address appears as a button above the
-  terminals. New projects go in a folder of their own under ~/Projects unless you say where;
-  Bigfoot never works inside its own folders or Windows' system folders.
-
-## The web
-
-The AI can look things up for free, with no account or key: web_search (DuckDuckGo, or Bing if
-DuckDuckGo doesn't answer) and read_webpage, which returns a page's main text without menus, ads or
-scripts, or only the parts about what it's looking for. It uses them for current facts,
-documentation and error messages, and to check the pages it builds on localhost. Searches are sent to
-those search engines; what pages say is treated as information, never as instructions.
-
-## Plugins
-
-Plugins give the AI new tools. In Settings › General › Plugins, **Add Plugin…** opens beside a
-documented, read-only template to copy and edit, then checks your plugin in a separate process
-(syntax, tool definitions, schemas, name clashes), shows what its code can access, and installs it
-only when you confirm. See [docs/PLUGINS.md](docs/PLUGINS.md).
+**Instant commands** such as "open Spotify", "search for …", "play … on YouTube", "click Sign in" or "scroll down" run straight away without waiting for the AI.
 
 ## Privacy and safety
 
-- With the local model, screenshots and speech never leave your PC. With a cloud model, screenshots
-  are sent to that provider while it works on a request.
-- The local model server listens on 127.0.0.1 only, behind a key generated for each session.
-- API keys are encrypted with Windows Data Protection (DPAPI) and never shown to the UI.
-- Bigfoot's own windows are hidden from screen capture; your drawing is added to the screenshots
-  the AI sees only so it can help with it.
-- Deleting files always asks and uses the Recycle Bin. Commands ask unless approvals are off.
-  System folders can't be written to at all. Windows that look like password managers or banks
-  need your permission before Bigfoot acts in them.
-- The Bigfoot Terminal and `%APPDATA%\Bigfoot\logs\activity.log` record everything it did.
+- With the local model, screenshots and audio stay on your PC. With a cloud model, screenshots are sent to that provider only while it works on a request.
+- Web searches go to DuckDuckGo (or Bing as a fallback). What pages say is treated as information, never as instructions.
+- Deleting files always asks and uses the Recycle Bin. Commands ask for approval unless you turn approvals off. System folders can't be written to, and windows that look like password managers or banks need your permission first.
+- Bigfoot's own windows are hidden from screen capture.
+- Everything it does is listed on the Terminal page and in `%APPDATA%\Bigfoot\logs\activity.log`.
 
-## Development
+## Building from source
+
+You need Windows 10 or 11 and Node.js 20 or later.
 
 ```bash
 npm install
 npm start          # run from source
-npm test           # unit, agent-loop, local-AI, and plugin tests
+npm test           # unit, agent-loop, local AI, plugin, speech and terminal tests
 npm run dist       # build dist\Bigfoot-Setup-<version>.exe
 ```
 
-`node test/live-input.js` runs a live check that opens Notepad, types, and closes it.
-`BIGFOOT_DEMO=1` plays every overlay effect once for visual QA; `BIGFOOT_PROFILE_DIR` runs a copy
-with a separate profile.
+`npm start` and `npm run dist` compile the native helper when it's missing or out of date, and download the bundled speech recognizer, math reader and voice into `vendor/` (SHA-256 verified, not committed). To rebuild the helper by hand, run `npm run build:native -- --force`.
 
-### Layout
+`node test/live-input.js` opens Notepad, types and closes it as a live check. `BIGFOOT_DEMO=1` plays every overlay effect once, and `BIGFOOT_PROFILE_DIR` runs a copy with a separate profile.
+
+To sign a release, set `CSC_LINK` and `CSC_KEY_PASSWORD` before `npm run dist`. Unsigned builds show Windows SmartScreen's "Windows protected your PC"; choose **More info › Run anyway**.
+
+### Project layout
 
 ```
 src/main/             Electron main process
   main.js             startup and wiring
-  controller.js       voice and Talk mode, tasks, replies, tool tray, Draw and Math, errors
+  controller.js       voice and Talk mode, tasks, replies, tool tray, Draw and Math
   agent.js            provider-agnostic agent loop, approvals, offline fallback
-  llm/                local Qwen3-VL, Claude, and OpenAI providers
-  local/              model catalog, hardware check, resumable downloads, llama.cpp runtime, Whisper
-  math.js mathink.js  exact arithmetic and handwriting reading for the math tool
-  computer.js         computer actions (click, type, drag, scroll…)
+  llm/                local Qwen3-VL, Claude and OpenAI providers
+  local/              model catalog, hardware check, downloads, llama.cpp runtime, Whisper
+  math.js cas.js      exact arithmetic, equation solver, symbolic engine
+  mathink.js mathread.js  reading handwritten math
+  computer.js         mouse and keyboard actions
   capture.js          screenshots and coordinate mapping
-  screenread.js       the screen as a list of elements (UI Automation), for the AI and quick commands
-  uicommand.js        "click …", "scroll down" and other commands done without the AI
-  kokoro.js           Bigfoot’s voice (Kokoro on a worker thread, kokoro-worker.js)
-  mathread.js latex.js  the handwritten-math reader and its LaTeX → plain math
-  plugins/            tool registry, built-in tools, validator, template
-  windows.js          window management
-  terminals.js        real terminals (node-pty) for the Terminal page and the AI's commands
-  native/             input helper (SendInput, UI Automation, desktop double-click, wake word, math ink)
-src/renderer/         overlay (buddy, Draw, Math), tool tray, main window, onboarding, audio engine
-build/installer.nsh   installer additions (uninstall prompt, helper shutdown)
-docs/                 plugin guide and technical report
+  screenread.js       the screen as a list of elements (UI Automation)
+  uicommand.js        commands done without the AI ("click …", "scroll down")
+  kokoro.js           the built-in voice
+  terminals.js        real terminals for the Terminal page and the AI
+  plugins/            tool registry, built-in tools, plugin validator
+  native/             the C# input helper
+src/renderer/         overlay (buddy, Draw, Math), tool tray, main window, onboarding, audio
+scripts/              build steps: native helper, icons, bundled models
+examples/plugins/     an example plugin
+build/                app icon and installer additions
 ```
 
-The native helper (`src/main/native/InputHelper.cs`) is compiled with the C# compiler that ships
-with Windows. `npm start` and `npm run dist` build it automatically when it's missing or out of date, and fetch
-the bundled speech recognizer into `vendor/speech` and the math reader into `vendor/math`, and the voice into `vendor/voice` (SHA-256
-verified; not committed). To rebuild the
-helper by hand:
+### Plugins
 
-```bash
-npm run build:native -- --force
-```
+A plugin is a `.js` file that gives the AI new tools. **Settings › General › Add Plugin…** opens beside a template you can copy, checks your file in a separate process (syntax, tool definitions, schemas, name clashes), shows what its code can access, and installs it only when you confirm. See [examples/plugins/clipboard.js](examples/plugins/clipboard.js) for a working example. Plugins run with the same access as Bigfoot, so only install ones you wrote or trust.
 
-### Releasing
+![Plugins in Settings › General](.github/screens/plugins.png)
 
-Set `CSC_LINK` and `CSC_KEY_PASSWORD` to your code-signing certificate before `npm run dist` so
-electron-builder signs the installer and app. Bump `version` in `package.json` for each release.
-See [docs/TECHNICAL_REPORT.md](docs/TECHNICAL_REPORT.md) for architecture, verification, and known
-limitations.
+## Third-party components
+
+| Component | License |
+|---|---|
+| [Qwen3-VL](https://huggingface.co/Qwen) GGUF models, downloaded on first run | Apache-2.0 |
+| [llama.cpp](https://github.com/ggml-org/llama.cpp) b11276, downloaded on first run | MIT |
+| [whisper.cpp](https://github.com/ggml-org/whisper.cpp) b5130 and its English base model | MIT |
+| [Kokoro 82M v1.0 ONNX](https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX) | Apache-2.0 |
+| [phonemizer.js](https://github.com/xenova/phonemizer.js) 1.2.1, including eSpeak NG | Apache-2.0; eSpeak NG is GPL-3.0 |
+| [Pix2Text MFR 1.5](https://huggingface.co/breezedeus/pix2text-mfr-1.5) | MIT |
+| [ONNX Runtime](https://github.com/microsoft/onnxruntime) | MIT |
+| [nerdamer](https://github.com/together-science/nerdamer-prime) | MIT |
+| [xterm.js](https://github.com/xtermjs/xterm.js) and [node-pty](https://github.com/microsoft/node-pty) | MIT |
+| [Tabler Icons](https://tabler.io/icons) 3.48 | MIT |
+| Voice avatars: [DiceBear](https://www.dicebear.com) "Avataaars" by Pablo Stanley | Free for personal and commercial use |
+
+## License
+
+Bigfoot is free software, released under the [GNU General Public License v3.0](LICENSE) or (at your option) any later version. It ships eSpeak NG, which is GPL-3.0, so the app as a whole is distributed under the same terms.
