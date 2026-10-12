@@ -52,9 +52,17 @@ const RUNTIMES = {
 // the English base model. On an 8 GB laptop without a graphics card it transcribed a test sentence
 // word-perfectly in ~1.9 s with the model loaded, where the Windows recognizer got half the words wrong.
 const WHISPER_TAG = 'b5130';
+const WHISPER_REV = '5359861c739e955e79d9a303bcbc70fb988958b1';
+const WHISPER_MODELS = [
+  { id: 'tiny.en', label: 'Tiny English', file: 'ggml-tiny.en-q8_0.bin', size: 43550795, sha256: '5bc2b3860aa151a4c6e7bb095e1fcce7cf12c7b020ca08dcec0c6d018bb7dd94', note: 'Fastest · low memory (~42 MB)' },
+  { id: 'base.en', label: 'Base English', file: 'ggml-base.en-q8_0.bin', size: 81781811, sha256: 'a4d4a0768075e13cfd7e19df3ae2dbc4a68d37d36a7dad45e8410c9a34f8c87e', note: 'Fast · moderate accuracy (~78 MB)' },
+  { id: 'small.en', label: 'Small English (Recommended)', file: 'ggml-small.en-q8_0.bin', size: 264477561, sha256: '67a179f608ea6114bd3fdb9060e762b588a3fb3bd00c4387971be4d177958067', note: 'High accuracy (~252 MB)' },
+  { id: 'medium.en', label: 'Medium English', file: 'ggml-medium.en-q8_0.bin', size: 823382461, sha256: '43fa2cd084de5a04399a896a9a7a786064e221365c01700cea4666005218f11c', note: 'Highest accuracy · needs ~1.5 GB RAM' },
+].map((m) => ({ ...m, ...hf('ggerganov/whisper.cpp', WHISPER_REV, m.file, m.size, m.sha256) }));
+
 const SPEECH = [
   { name: 'whisper-bin-x64.zip', size: 8573270, sha256: 'f9ec6c52a2e949b62ab51fa21d0d497958f9e41c3010c157c4e42932d5316f3c', url: `https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_TAG}/whisper-bin-x64.zip`, speechRuntime: true },
-  { ...hf('ggerganov/whisper.cpp', '5359861c739e955e79d9a303bcbc70fb988958b1', 'ggml-base.en-q8_0.bin', 81781811, 'a4d4a0768075e13cfd7e19df3ae2dbc4a68d37d36a7dad45e8410c9a34f8c87e'), speech: true },
+  { ...hf('ggerganov/whisper.cpp', WHISPER_REV, 'ggml-small.en-q8_0.bin', 264477561, '67a179f608ea6114bd3fdb9060e762b588a3fb3bd00c4387971be4d177958067'), speech: true },
 ];
 
 // Handwritten math reader shipped inside the app: Pix2Text MFR 1.5 (MIT), about 1 s per line on a CPU.
@@ -134,4 +142,4 @@ function recommend(hw) {
   return { pick, options };
 }
 
-module.exports = { MODELS, RETIRED, RUNTIME_TAG, WHISPER_TAG, SPEECH, MATH, VOICE, runtimeFor, modelById, filesFor, downloadBytes, recommend, GB };
+module.exports = { MODELS, RETIRED, RUNTIME_TAG, WHISPER_TAG, WHISPER_MODELS, SPEECH, MATH, VOICE, runtimeFor, modelById, filesFor, downloadBytes, recommend, GB };

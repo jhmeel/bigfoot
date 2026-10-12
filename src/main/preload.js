@@ -14,6 +14,7 @@ const INVOKE = new Set([
   'local:hardware', 'local:status', 'local:start', 'local:pause', 'local:resume', 'local:cancel',
   'toolbar:pick', 'math:read', 'math:ink', 'math:system', 'math:calc', 'math:share', 'ink:stop', 'tool:exit', 'ink:share', 'ink:reveal', 'loader:status', 'loader:retry',
   'plugins:list', 'plugins:pick', 'plugins:install', 'plugins:remove',
+  'speech:models', 'speech:pick-model',
 ]);
 const SEND = new Set([
   'overlay:ready', 'overlay:fly-done', 'overlay:region', 'overlay:region-ask', 'panel:ready',
@@ -23,6 +24,7 @@ const RECEIVE = new Set([
   'cursor', 'state', 'bubble', 'bubble-live', 'fly', 'banner', 'welcome', 'settings', 'log', 'log-live', 'log-image', 'usage', 'level',
   'engine:cmd', 'approval:show', 'buddy:visible', 'annotate', 'select', 'region', 'terminal:line',
   'local:progress', 'local:runtime', 'toolbar:show', 'ink', 'voice-mode', 'loader', 'tools-blocked', 'term:data', 'term:exit', 'term:list', 'term:focus',
+  'speech:progress', 'speech:state',
 ]);
 
 contextBridge.exposeInMainWorld('buddy', {

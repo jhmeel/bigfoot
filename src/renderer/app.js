@@ -223,6 +223,134 @@
   $('rate').value = s.speechRate;
   $('rate').addEventListener('change', () => update({ speechRate: Number($('rate').value) }));
 
+  // Speech recognition (Whisper model picker)
+  const whisperContainer = $('whisper-models');
+  const whisperStatus = $('whisper-status');
+  const whisperMsg = $('whisper-msg');
+  let whisperActiveModel = s.whisperModel || 'small.en';
+  let downloadingWhisperId = null;
+
+  async function renderWhisperModels() {
+    if (!whisperContainer) return;
+    const res = await api.invoke('speech:models');
+    if (!res || !res.models) return;
+    whisperActiveModel = res.active || whisperActiveModel;
+
+    if (whisperStatus) {
+      const isReady = res.state === 'ready';
+      whisperStatus.className = `status ${isReady ? 'ok' : res.state === 'loading' ? 'busy' : ''}`;
+      whisperStatus.querySelector('.text').textContent = isReady ? 'Ready' : res.state === 'loading' ? 'Loading…' : res.state;
+    }
+
+    whisperContainer.innerHTML = '';
+    for (const m of res.models) {
+      const card = document.createElement('div');
+      const isSelected = m.id === whisperActiveModel;
+      const isDownloading = downloadingWhisperId === m.id || m.downloading;
+      card.className = `whisper-card${isSelected ? ' selected' : ''}`;
+      card.tabIndex = 0;
+      card.setAttribute('role', 'radio');
+      card.setAttribute('aria-checked', String(isSelected));
+      card.dataset.id = m.id;
+
+      const sizeMB = `${Math.round(m.size / (1024 * 1024))} MB`;
+
+      const info = document.createElement('div');
+      info.className = 'model-info';
+
+      const title = document.createElement('div');
+      title.className = 'model-title';
+      const name = document.createElement('span');
+      name.className = 'model-name';
+      name.textContent = m.label;
+      const badge = document.createElement('span');
+      badge.className = 'model-badge';
+      badge.textContent = sizeMB;
+      title.append(name, badge);
+
+      const note = document.createElement('div');
+      note.className = 'model-note';
+      note.textContent = m.note || '';
+      info.append(title, note);
+
+      const action = document.createElement('div');
+      action.className = 'model-action';
+      if (isDownloading) {
+        const pct = m.progress != null ? `${m.progress}%` : '…';
+        action.innerHTML = `<span class="caption" style="color:var(--text-1)">Downloading ${pct}</span>`;
+      } else if (isSelected) {
+        action.innerHTML = `<span class="badge" style="color:#34d399; background:rgba(52,211,153,0.15)">Active</span>`;
+      } else if (m.installed) {
+        const btn = document.createElement('button');
+        btn.className = 'btn secondary small';
+        btn.type = 'button';
+        btn.textContent = 'Use';
+        action.append(btn);
+      } else {
+        const btn = document.createElement('button');
+        btn.className = 'btn secondary small';
+        btn.type = 'button';
+        btn.textContent = 'Download';
+        action.append(btn);
+      }
+
+      card.append(info, action);
+
+      const selectOrDownload = async () => {
+        if (downloadingWhisperId) return;
+        if (isSelected && m.installed) return;
+        if (whisperMsg) whisperMsg.textContent = m.installed ? `Switching to ${m.label}…` : `Downloading ${m.label} (${sizeMB})…`;
+        if (!m.installed) {
+          downloadingWhisperId = m.id;
+          renderWhisperModels();
+        }
+        try {
+          const r = await api.invoke('speech:pick-model', m.id);
+          if (r && r.ok) {
+            whisperActiveModel = m.id;
+            s.whisperModel = m.id;
+            if (whisperMsg) whisperMsg.textContent = `Using ${m.label}. Ready for voice commands.`;
+          } else {
+            if (whisperMsg) whisperMsg.textContent = (r && r.message) || 'Failed to switch model.';
+          }
+        } catch (err) {
+          if (whisperMsg) whisperMsg.textContent = err.message || 'Error updating speech model.';
+        } finally {
+          downloadingWhisperId = null;
+          renderWhisperModels();
+        }
+      };
+
+      card.addEventListener('click', () => selectOrDownload());
+      card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectOrDownload(); }
+      });
+
+      whisperContainer.append(card);
+    }
+  }
+
+  api.on('speech:progress', (data) => {
+    if (!data) return;
+    downloadingWhisperId = data.id;
+    if (whisperMsg) whisperMsg.textContent = `Downloading speech model (${data.percent}%)…`;
+    const card = whisperContainer && whisperContainer.querySelector(`.whisper-card[data-id="${data.id}"]`);
+    if (card) {
+      const act = card.querySelector('.model-action');
+      if (act) act.innerHTML = `<span class="caption" style="color:var(--text-1)">${data.percent}%</span>`;
+    }
+  });
+
+  api.on('speech:state', (st) => {
+    if (whisperStatus && st) {
+      const isReady = st.state === 'ready';
+      whisperStatus.className = `status ${isReady ? 'ok' : st.state === 'loading' ? 'busy' : ''}`;
+      whisperStatus.querySelector('.text').textContent = isReady ? 'Ready' : st.state === 'loading' ? 'Loading…' : st.state;
+    }
+  });
+
+  renderWhisperModels();
+
   // Microphone
 
   const drawMeter = UI.meter($('mic-meter'));

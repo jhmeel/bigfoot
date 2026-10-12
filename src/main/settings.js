@@ -11,6 +11,7 @@ const CHOICES = {
   provider: ['local', 'anthropic', 'openai', 'custom'],
   ttsProvider: ['kokoro', 'system'],
   voice: ['af_heart', 'af_bella', 'bf_emma', 'am_michael', 'am_fenrir'],
+  whisperModel: ['tiny.en', 'base.en', 'small.en', 'medium.en'],
 };
 
 const MODELS = [
@@ -41,6 +42,7 @@ const DEFAULTS = {
   voice: 'af_heart',              // one of ./kokoro VOICES
   systemVoice: '',                // Windows voice, used only if Bigfoot's voice fails
   speechRate: 1.0,
+  whisperModel: 'small.en',       // tiny.en | base.en | small.en | medium.en
 
   soundEffects: true,
   showBuddy: true,

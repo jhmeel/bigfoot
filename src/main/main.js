@@ -56,7 +56,7 @@ async function start() {
   const isOnline = () => net.isOnline();
   const local = new LocalModelManager({ dir: path.join(app.getPath('userData'), 'local-ai'), settings, logger, isOnline });
   const runtime = new LocalRuntime({ manager: local, logger, settings });
-  const speech = new SpeechService({ logger });
+  const speech = new SpeechService({ logger, settings });
 
   const plugins = new PluginRegistry(logger);
   plugins.loadBuiltins();
@@ -130,7 +130,7 @@ async function start() {
   session.defaultSession.setPermissionRequestHandler((wc, permission, cb) => cb(permission === 'media' && isEngine(wc)));
   session.defaultSession.setPermissionCheckHandler((wc, permission) => permission === 'media' && isEngine(wc));
 
-  registerIpc({ controller, windows, settings, agent, audio, activity, plugins, pluginManager, logger, costs, local, runtime, terminals });
+  registerIpc({ controller, windows, settings, agent, audio, speech, activity, plugins, pluginManager, logger, costs, local, runtime, terminals });
 
   local.on('progress', (snap) => windows.send(windows.main, 'local:progress', snap));
   local.on('installed', (id) => {
@@ -158,6 +158,8 @@ async function start() {
   runtime.on('progress', sendLoader);
   runtime.on('state', sendLoader);
   speech.on('state', sendLoader);
+  speech.on('state', (s) => windows.broadcast('speech:state', s));
+  speech.on('progress', (p) => windows.broadcast('speech:progress', p));
   ipcMain.handle('loader:status', () => loaderStatus());
   // The overlay lets clicks through to the apps below; over the loader card it takes them (for its ×).
   ipcMain.on('loader:pointer', (e, state) => {

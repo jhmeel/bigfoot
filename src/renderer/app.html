@@ -189,7 +189,14 @@
 
           <div class="section-label">Speech recognition</div>
           <div class="group">
-            <div class="row"><div class="label">Recognize speech<div class="hint">Whisper on this PC · private, works offline</div></div></div>
+            <div class="row stack">
+              <div class="row-head">
+                <div class="label">Recognition model<div class="hint">Whisper on this PC · private, works offline</div></div>
+                <div id="whisper-status" class="status ok"><span class="dot"></span><span class="text">Ready</span></div>
+              </div>
+              <div id="whisper-models" class="whisper-models"></div>
+              <div class="caption" id="whisper-msg">Pick a model for speech accuracy. Larger models understand commands better.</div>
+            </div>
           </div>
 
           <div class="section-label">Microphone</div>

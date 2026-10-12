@@ -24,7 +24,7 @@ function microphoneStatus() {
   }
 }
 
-function registerIpc({ controller, windows, settings, agent, audio, activity, plugins, pluginManager, logger, costs, local, runtime, terminals }) {
+function registerIpc({ controller, windows, settings, agent, audio, speech, activity, plugins, pluginManager, logger, costs, local, runtime, terminals }) {
   const handle = (channel, fn) => ipcMain.handle(channel, (event, ...args) => fn(...args, event));
 
   // settings
@@ -108,6 +108,21 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
     }
   });
   handle('wake:status', async () => ({ enabled: settings.get('wakeWord'), active: await controller.refreshWakeWord() }));
+
+  // speech recognition (whisper)
+  handle('speech:models', () => ({
+    models: speech ? speech.listModels() : [],
+    active: (settings && settings.get('whisperModel')) || 'small.en',
+    state: speech ? speech.state : 'stopped',
+  }));
+  handle('speech:pick-model', async (id) => {
+    if (!speech) return { ok: false, message: 'Speech service not available' };
+    try {
+      return await speech.pickModel(id);
+    } catch (err) {
+      return { ok: false, message: err.message };
+    }
+  });
 
   // tasks
   handle('task:run', (text) => controller.runTask(text, 'typed'));
