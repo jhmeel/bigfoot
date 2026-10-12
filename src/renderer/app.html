@@ -148,7 +148,13 @@
           <div class="cloud-note"><span class="warn-icon"></span><span>Cloud models need an internet connection and your own API key. Whenever you’re offline, Bigfoot uses the model on this PC.</span></div>
           <div class="group">
             <div class="row"><div class="label">Use for requests<div class="hint" id="provider-hint"></div></div>
-              <div class="control"><div class="segmented" id="provider" data-options='[["local","On this PC"],["anthropic","Claude"],["openai","OpenAI"]]'></div></div></div>
+              <div class="control"><div class="segmented" id="provider" data-options='[["local","On this PC"],["anthropic","Claude"],["openai","OpenAI"],["custom","Custom"]]'></div></div></div>
+            <div class="row stack" id="custom-url-row" hidden>
+              <div class="row-head"><span class="headline">Base URL</span></div>
+              <div class="field-wrap">
+                <input class="field mono" id="custom-base-url" type="text" placeholder="http://localhost:11434/v1" autocomplete="off" spellcheck="false">
+              </div>
+            </div>
             <div class="row stack cloud-only">
               <div class="row-head"><span class="headline" id="llm-key-label">Anthropic API key</span><span class="status" id="llm-key-status"><span class="dot"></span><span class="text">Not set</span></span></div>
               <div class="field-wrap">

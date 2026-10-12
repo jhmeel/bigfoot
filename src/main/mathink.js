@@ -6,6 +6,7 @@ const llm = require('./llm');
 const { askLocal } = require('./llm/local');
 const anthropic = require('./llm/anthropic');
 const openai = require('./llm/openai');
+const custom = require('./llm/custom');
 const { evaluate, normalize, solveEquation, solveSystem, unknowns } = require('./math');
 const cas = require('./cas');
 
@@ -194,6 +195,8 @@ async function readInk({ png, settings, runtime, online = true, signal }) {
     reply = await askLocal(runtime, { prompt: PROMPT, image, signal, maxTokens: 200 });
   } else if (id === 'anthropic') {
     reply = await anthropic.ask({ apiKey: settings.secret('anthropicKey'), model: settings.get('model'), prompt: PROMPT, image, signal });
+  } else if (id === 'custom') {
+    reply = await custom.ask({ baseUrl: settings.get('customBaseUrl'), key: settings.secret('customKey'), model: settings.get('customModel'), prompt: PROMPT, image, signal });
   } else {
     reply = await openai.ask({ key: settings.secret('openaiKey'), model: settings.get('openaiModel'), prompt: PROMPT, image, signal });
   }

@@ -6,9 +6,9 @@ const fs = require('fs');
 const path = require('path');
 const { app, safeStorage } = require('electron');
 
-const SECRET_KEYS = ['anthropicKey', 'openaiKey'];
+const SECRET_KEYS = ['anthropicKey', 'openaiKey', 'customKey'];
 const CHOICES = {
-  provider: ['local', 'anthropic', 'openai'],
+  provider: ['local', 'anthropic', 'openai', 'custom'],
   ttsProvider: ['kokoro', 'system'],
   voice: ['af_heart', 'af_bella', 'bf_emma', 'am_michael', 'am_fenrir'],
 };
@@ -23,11 +23,13 @@ const DEFAULTS = {
   assistantName: 'Bigfoot',
   wakeWord: true,                 // respond to "Hey <name>"
 
-  provider: 'local',              // local | anthropic | openai
+  provider: 'local',              // local | anthropic | openai | custom
   localModel: '',                 // installed Qwen3-VL model id
   keepAiLoaded: true,             // load the local model at startup and keep it loaded (no cold starts)
   model: 'claude-opus-5-5',       // Claude model
   openaiModel: 'gpt-5',
+  customBaseUrl: 'http://localhost:11434/v1',
+  customModel: '',
   effort: 'high',
   screenDetail: 'high',           // high = 1920 px screenshots for Claude, standard = 1366 px (cheaper)
   approvalMode: 'risky',          // risky | every | auto

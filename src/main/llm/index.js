@@ -3,6 +3,7 @@
 
 const anthropic = require('./anthropic');
 const openai = require('./openai');
+const custom = require('./custom');
 const local = require('./local');
 const { ProviderError } = require('./errors');
 const catalog = require('../local/catalog');
@@ -11,11 +12,15 @@ const PROVIDERS = {
   local: { label: 'Qwen3-VL', keyName: null, modelSetting: 'localModel', module: local, Provider: local.LocalProvider, cloud: false },
   anthropic: { label: 'Claude', keyName: 'anthropicKey', modelSetting: 'model', module: anthropic, Provider: anthropic.AnthropicProvider, cloud: true },
   openai: { label: 'OpenAI', keyName: 'openaiKey', modelSetting: 'openaiModel', module: openai, Provider: openai.OpenAIProvider, cloud: true },
+  custom: { label: 'Custom', keyName: 'customKey', modelSetting: 'customModel', module: custom, Provider: custom.CustomProvider, cloud: true },
 };
-const CLOUD = ['anthropic', 'openai'];
+const CLOUD = ['anthropic', 'openai', 'custom'];
 const ORDER = ['local', ...CLOUD];
 
-const hasKey = (settings, id) => Boolean(PROVIDERS[id].keyName && settings.secret(PROVIDERS[id].keyName));
+const hasKey = (settings, id) => {
+  if (id === 'custom') return Boolean(settings.get('customBaseUrl'));
+  return Boolean(PROVIDERS[id].keyName && settings.secret(PROVIDERS[id].keyName));
+};
 
 function resolveProvider(settings, { online = true } = {}) {
   const chosen = settings.get('provider');
@@ -41,6 +46,16 @@ function createProvider(settings, { system, tools, screen, runtime, online = tru
   if (id === 'local') {
     return new p.Provider({ runtime, model: settings.get('localModel'), label: describe(settings, id), system, tools, screen });
   }
+  if (id === 'custom') {
+    return new p.Provider({
+      baseUrl: settings.get('customBaseUrl'),
+      apiKey: settings.secret(p.keyName),
+      model: settings.get(p.modelSetting),
+      system,
+      tools,
+      screen,
+    });
+  }
   return new p.Provider({
     apiKey: settings.secret(p.keyName),
     model: settings.get(p.modelSetting),
@@ -51,13 +66,15 @@ function createProvider(settings, { system, tools, screen, runtime, online = tru
   });
 }
 
-function listModels(id, key) {
+function listModels(id, key, baseUrl) {
   if (!PROVIDERS[id] || !PROVIDERS[id].cloud) throw new ProviderError(`Unknown provider ${id}`);
+  if (id === 'custom') return PROVIDERS[id].module.listModels(baseUrl, key);
   return PROVIDERS[id].module.listModels(key);
 }
 
-function testKey(id, key, model) {
+function testKey(id, key, model, baseUrl) {
   if (!PROVIDERS[id] || !PROVIDERS[id].cloud) throw new ProviderError(`Unknown provider ${id}`);
+  if (id === 'custom') return PROVIDERS[id].module.testKey(baseUrl, key, model);
   return PROVIDERS[id].module.testKey(key, model);
 }
 

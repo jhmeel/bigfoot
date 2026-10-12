@@ -34,11 +34,11 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
   handle('provider:test', async (id, candidate) => {
     const p = llm.PROVIDERS[id];
     if (!p || !p.cloud) return { ok: false, message: 'Unknown provider.' };
-    const key = typeof candidate === 'string' && candidate.trim() ? candidate.trim() : settings.secret(p.keyName);
-    if (!key) return { ok: false, message: 'Paste a key first.' };
+    const key = typeof candidate === 'string' ? candidate.trim() : settings.secret(p.keyName);
+    if (id !== 'custom' && !key) return { ok: false, message: 'Paste a key first.' };
     if (id === 'anthropic' && !/^sk-ant-/.test(key)) return { ok: false, message: 'Anthropic keys start with sk-ant-.' };
     try {
-      await llm.testKey(id, key, settings.get(p.modelSetting));
+      await llm.testKey(id, key, settings.get(p.modelSetting), settings.get('customBaseUrl'));
       return { ok: true, message: 'Connected' };
     } catch (err) {
       return { ok: false, message: err.message };
@@ -47,9 +47,9 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
   handle('models:list', async (id) => {
     const p = llm.PROVIDERS[id];
     const key = p && p.cloud && settings.secret(p.keyName);
-    if (!key) return { ok: false, models: [], message: `Add a ${p ? p.label : ''} key to see its models.` };
+    if (id !== 'custom' && !key) return { ok: false, models: [], message: `Add a ${p ? p.label : ''} key to see its models.` };
     try {
-      return { ok: true, models: await llm.listModels(id, key) };
+      return { ok: true, models: await llm.listModels(id, key, settings.get('customBaseUrl')) };
     } catch (err) {
       return { ok: false, models: [], message: err.message };
     }
