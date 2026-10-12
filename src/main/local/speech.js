@@ -10,12 +10,13 @@ const net = require('net');
 const os = require('os');
 const path = require('path');
 const { app } = require('electron');
-const { SPEECH } = require('./catalog');
+const { SPEECH, WHISPER_MODELS } = require('./catalog');
+const { downloadFile, sha256File } = require('./download');
 
 // Generous: on a PC short of memory (the AI loading at the same time) Whisper starts slowly.
 const START_TIMEOUT_MS = 180000;
 const TRANSCRIBE_TIMEOUT_MS = 120000;
-const SPEECH_HINT = 'Hey Bigfoot, open Chrome and search for the nearest restaurant. Open Spotify and play music on YouTube. Draw a circle on the screen. Open Notepad, WhatsApp, Word, Excel, File Explorer.';
+const SPEECH_HINT = 'Hey Bigfoot, open Chrome, Microsoft Edge, or the browser and search for the nearest restaurant. Open Spotify and play music on YouTube. Draw a circle on the screen. Open Notepad, WhatsApp, Word, Excel, File Explorer, settings, or terminal.';
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -29,25 +30,180 @@ function freePort() {
   });
 }
 
+function speechDir() {
+  return app && app.isPackaged ? path.join(process.resourcesPath, 'speech') : path.join(__dirname, '..', '..', '..', 'vendor', 'speech');
+}
+
+function userSpeechDir() {
+  return app ? path.join(app.getPath('userData'), 'speech') : speechDir();
+}
+
+function targetModelDir() {
+  const bundled = speechDir();
+  if (app && app.isPackaged) {
+    const dir = userSpeechDir();
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+  if (fs.existsSync(bundled)) {
+    return bundled;
+  }
+  const dir = userSpeechDir();
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 /** The bundled recognizer: app resources when installed, vendor/speech when run from source. */
-function speechPaths() {
-  const base = app && app.isPackaged ? path.join(process.resourcesPath, 'speech') : path.join(__dirname, '..', '..', '..', 'vendor', 'speech');
+function speechPaths(modelId, settings) {
+  const base = speechDir();
   const server = path.join(base, 'whisper', 'whisper-server.exe');
-  const model = path.join(base, SPEECH.find((f) => f.speech).name);
-  return fs.existsSync(server) && fs.existsSync(model) ? { server, model, cwd: path.dirname(server) } : null;
+  if (!fs.existsSync(server)) return null;
+
+  const targetId = modelId || (settings && settings.get('whisperModel')) || 'small.en';
+  const m = (WHISPER_MODELS && WHISPER_MODELS.find((x) => x.id === targetId)) || (WHISPER_MODELS && WHISPER_MODELS[0]);
+  if (!m) return null;
+
+  const candidates = [
+    path.join(base, m.file),
+    app ? path.join(app.getPath('userData'), 'speech', m.file) : null,
+  ].filter(Boolean);
+
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p) && fs.statSync(p).size === m.size) return { server, model: p, cwd: path.dirname(server), modelDef: m };
+    } catch {}
+  }
+  return null;
 }
 
 class SpeechService extends EventEmitter {
-  constructor({ logger } = {}) {
+  constructor({ logger, settings } = {}) {
     super();
     this.logger = logger;
+    this.settings = settings;
     this.state = 'stopped';
     this.proc = null;
     this.base = null;
     this.starting = null;
+    this.downloadingId = null;
+    this.downloadProgress = null;
   }
 
-  get available() { return Boolean(speechPaths()); }
+  findModelFile(m) {
+    if (!m || !m.file) return null;
+    const candidates = [
+      path.join(speechDir(), m.file),
+      app ? path.join(app.getPath('userData'), 'speech', m.file) : null,
+    ].filter(Boolean);
+    for (const p of candidates) {
+      try {
+        if (fs.existsSync(p) && fs.statSync(p).size === m.size) return p;
+      } catch {}
+    }
+    return null;
+  }
+
+  activeModel() {
+    const saved = this.settings && this.settings.get('whisperModel');
+    if (saved) {
+      const found = WHISPER_MODELS.find((m) => m.id === saved);
+      if (found) return found;
+    }
+    const small = WHISPER_MODELS.find((m) => m.id === 'small.en');
+    if (this.findModelFile(small)) return small;
+    const base = WHISPER_MODELS.find((m) => m.id === 'base.en');
+    if (this.findModelFile(base)) return base;
+    return small || WHISPER_MODELS[0];
+  }
+
+  speechPaths() {
+    const base = speechDir();
+    const server = path.join(base, 'whisper', 'whisper-server.exe');
+    if (!fs.existsSync(server)) return null;
+    const modelDef = this.activeModel();
+    const model = this.findModelFile(modelDef);
+    return model ? { server, model, cwd: path.dirname(server), modelDef } : null;
+  }
+
+  get available() { return Boolean(this.speechPaths()); }
+
+  listModels() {
+    const active = this.activeModel();
+    return WHISPER_MODELS.map((m) => {
+      const file = this.findModelFile(m);
+      return {
+        id: m.id,
+        label: m.label,
+        size: m.size,
+        note: m.note,
+        installed: Boolean(file),
+        active: m.id === active.id,
+        downloading: this.downloadingId === m.id,
+        progress: this.downloadingId === m.id ? this.downloadProgress : null,
+      };
+    });
+  }
+
+  async downloadModel(m) {
+    if (this.downloadingId) {
+      throw new Error(`Another model is currently downloading (${this.downloadingId})`);
+    }
+    this.downloadingId = m.id;
+    this.downloadProgress = 0;
+    this.emit('progress', { id: m.id, percent: 0 });
+
+    try {
+      const targetDir = targetModelDir();
+      const targetPath = path.join(targetDir, m.file);
+      const destPart = targetPath + '.part';
+
+      await downloadFile({
+        url: m.url,
+        dest: destPart,
+        size: m.size,
+        onBytes: (_chunk, total) => {
+          const pct = Math.min(99, Math.round((total / m.size) * 100));
+          if (pct !== this.downloadProgress) {
+            this.downloadProgress = pct;
+            this.emit('progress', { id: m.id, percent: pct });
+          }
+        },
+      });
+
+      const hash = await sha256File(destPart);
+      if (hash !== m.sha256) {
+        try { fs.unlinkSync(destPart); } catch {}
+        throw new Error(`Model hash verification failed for ${m.label}.`);
+      }
+      fs.renameSync(destPart, targetPath);
+      this.downloadProgress = 100;
+      this.emit('progress', { id: m.id, percent: 100 });
+      return targetPath;
+    } finally {
+      this.downloadingId = null;
+      this.downloadProgress = null;
+    }
+  }
+
+  async pickModel(id) {
+    const m = WHISPER_MODELS.find((x) => x.id === id);
+    if (!m) throw new Error(`Unknown model ${id}`);
+
+    let modelPath = this.findModelFile(m);
+    if (!modelPath) {
+      await this.downloadModel(m);
+      modelPath = this.findModelFile(m);
+      if (!modelPath) throw new Error(`Failed to verify ${m.label} after download.`);
+    }
+
+    if (this.settings) {
+      this.settings.update({ whisperModel: id });
+    }
+
+    await this.stopAsync();
+    await this.ensure();
+    return { ok: true, id };
+  }
 
   preload() {
     if (this.available) this.ensure().catch(() => {});
@@ -75,8 +231,16 @@ class SpeechService extends EventEmitter {
   }
 
   async launch() {
-    const files = speechPaths();
-    if (!files) throw new Error('The speech recognizer is missing from this installation. Reinstall Bigfoot to restore it.');
+    const files = this.speechPaths();
+    if (!files) {
+      const baseDir = speechDir();
+      const server = path.join(baseDir, 'whisper', 'whisper-server.exe');
+      if (fs.existsSync(server)) {
+        const model = this.activeModel();
+        throw new Error(`The speech model ${model.label} is not installed yet.`);
+      }
+      throw new Error('The speech recognizer is missing from this installation. Reinstall Bigfoot to restore it.');
+    }
     this.stopping = false;
     const port = await freePort();
     const threads = Math.max(2, Math.round(os.cpus().length / 2) - 1);
@@ -123,6 +287,28 @@ class SpeechService extends EventEmitter {
     this.stopping = true;
     this.base = null;
     if (this.proc) { try { this.proc.kill(); } catch { /* gone */ } this.proc = null; }
+  }
+
+  async stopAsync() {
+    this.stopping = true;
+    this.base = null;
+    const proc = this.proc;
+    if (!proc) return;
+    this.proc = null;
+    await new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        try { proc.kill('SIGKILL'); } catch {}
+        resolve();
+      }, 3000);
+      proc.once('exit', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      try { proc.kill(); } catch {
+        clearTimeout(timer);
+        resolve();
+      }
+    });
   }
 }
 

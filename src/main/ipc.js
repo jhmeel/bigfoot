@@ -24,7 +24,7 @@ function microphoneStatus() {
   }
 }
 
-function registerIpc({ controller, windows, settings, agent, audio, activity, plugins, pluginManager, logger, costs, local, runtime, terminals }) {
+function registerIpc({ controller, windows, settings, agent, audio, speech, activity, plugins, pluginManager, logger, costs, local, runtime, terminals }) {
   const handle = (channel, fn) => ipcMain.handle(channel, (event, ...args) => fn(...args, event));
 
   // settings
@@ -34,11 +34,11 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
   handle('provider:test', async (id, candidate) => {
     const p = llm.PROVIDERS[id];
     if (!p || !p.cloud) return { ok: false, message: 'Unknown provider.' };
-    const key = typeof candidate === 'string' && candidate.trim() ? candidate.trim() : settings.secret(p.keyName);
-    if (!key) return { ok: false, message: 'Paste a key first.' };
+    const key = typeof candidate === 'string' ? candidate.trim() : settings.secret(p.keyName);
+    if (id !== 'custom' && !key) return { ok: false, message: 'Paste a key first.' };
     if (id === 'anthropic' && !/^sk-ant-/.test(key)) return { ok: false, message: 'Anthropic keys start with sk-ant-.' };
     try {
-      await llm.testKey(id, key, settings.get(p.modelSetting));
+      await llm.testKey(id, key, settings.get(p.modelSetting), settings.get('customBaseUrl'));
       return { ok: true, message: 'Connected' };
     } catch (err) {
       return { ok: false, message: err.message };
@@ -47,9 +47,9 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
   handle('models:list', async (id) => {
     const p = llm.PROVIDERS[id];
     const key = p && p.cloud && settings.secret(p.keyName);
-    if (!key) return { ok: false, models: [], message: `Add a ${p ? p.label : ''} key to see its models.` };
+    if (id !== 'custom' && !key) return { ok: false, models: [], message: `Add a ${p ? p.label : ''} key to see its models.` };
     try {
-      return { ok: true, models: await llm.listModels(id, key) };
+      return { ok: true, models: await llm.listModels(id, key, settings.get('customBaseUrl')) };
     } catch (err) {
       return { ok: false, models: [], message: err.message };
     }
@@ -108,6 +108,21 @@ function registerIpc({ controller, windows, settings, agent, audio, activity, pl
     }
   });
   handle('wake:status', async () => ({ enabled: settings.get('wakeWord'), active: await controller.refreshWakeWord() }));
+
+  // speech recognition (whisper)
+  handle('speech:models', () => ({
+    models: speech ? speech.listModels() : [],
+    active: (settings && settings.get('whisperModel')) || 'small.en',
+    state: speech ? speech.state : 'stopped',
+  }));
+  handle('speech:pick-model', async (id) => {
+    if (!speech) return { ok: false, message: 'Speech service not available' };
+    try {
+      return await speech.pickModel(id);
+    } catch (err) {
+      return { ok: false, message: err.message };
+    }
+  });
 
   // tasks
   handle('task:run', (text) => controller.runTask(text, 'typed'));

@@ -154,14 +154,15 @@ test('providers without a native computer tool use one "computer" function', () 
 });
 
 test('the local model is the default, cloud is used only when chosen, keyed, and online', () => {
-  const fake = (provider, keys, localModel = '') => ({
-    get: (k) => ({ provider, localModel })[k],
+  const fake = (provider, keys, localModel = '', customBaseUrl = '') => ({
+    get: (k) => ({ provider, localModel, customBaseUrl })[k],
     secret: (k) => keys[k] || '',
   });
   const installed = 'qwen3-vl-8b';
   assert.equal(resolveProvider(fake('local', { anthropicKey: 'a' }, installed)), 'local');
   assert.equal(resolveProvider(fake('anthropic', { anthropicKey: 'a' }, installed)), 'anthropic');
   assert.equal(resolveProvider(fake('anthropic', { anthropicKey: 'a' }, installed), { online: false }), 'local');
+  assert.equal(resolveProvider(fake('custom', {}, installed, 'http://localhost:11434/v1')), 'custom');
   assert.equal(resolveProvider(fake('openai', {}, installed)), 'local'); // chosen cloud without a key
   assert.equal(resolveProvider(fake('local', { openaiKey: 'o' })), 'openai'); // model still downloading
   assert.equal(resolveProvider(fake('local', {})), null);

@@ -80,6 +80,7 @@
   const LLM = {
     anthropic: { label: 'Claude', keyName: 'anthropicKey', keyLabel: 'Anthropic API key', modelSetting: 'model', placeholder: 'sk-ant-…' },
     openai: { label: 'OpenAI', keyName: 'openaiKey', keyLabel: 'OpenAI API key', modelSetting: 'openaiModel', placeholder: 'sk-…' },
+    custom: { label: 'Custom', keyName: 'customKey', keyLabel: 'API key (optional)', modelSetting: 'customModel', placeholder: 'Leave empty for Ollama / LM Studio' },
   };
   const current = () => LLM[s.provider] || LLM.anthropic;
   let local = null;
@@ -91,13 +92,31 @@
     renderActive();
   }
   UI.switchControl($('keep-loaded'), s.keepAiLoaded, (v) => update({ keepAiLoaded: v }));
+
+  const baseUrlInput = $('custom-base-url');
+  if (baseUrlInput) {
+    baseUrlInput.value = s.customBaseUrl || '';
+    const saveBaseUrl = async () => {
+      const val = baseUrlInput.value.trim();
+      if (val !== (s.customBaseUrl || '')) {
+        await update({ customBaseUrl: val });
+        renderModels();
+      }
+    };
+    baseUrlInput.addEventListener('change', saveBaseUrl);
+    baseUrlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveBaseUrl(); } });
+  }
+
   const llmKey = UI.keyField({
     input: $('llm-key'), status: $('llm-key-status'), reveal: $('llm-reveal'), remove: $('llm-remove'),
     key: () => current().keyName, has: s.has[current().keyName], placeholder: () => current().placeholder,
     validate: (value) => api.invoke('provider:test', s.provider, value),
     onSaved: async () => { s = await api.invoke('settings:get'); renderModels(); },
   });
-  $('llm-key-link').addEventListener('click', () => api.invoke('app:open-link', s.provider));
+  $('llm-key-link').addEventListener('click', () => {
+    if (s.provider === 'custom') return;
+    api.invoke('app:open-link', s.provider);
+  });
   $('llm-test').addEventListener('click', async () => {
     if ($('llm-key').value.trim()) return llmKey.save();
     const st = $('llm-key-status');
@@ -112,6 +131,7 @@
   async function renderModels() {
     const cloud = s.provider !== 'local';
     document.querySelectorAll('[data-pane="account"] .cloud-only').forEach((el) => { el.hidden = !cloud; });
+    $('custom-url-row').hidden = s.provider !== 'custom';
     $('effort-row').hidden = s.provider !== 'anthropic';
     $('detail-row').hidden = s.provider !== 'anthropic';
     $('provider-hint').textContent = cloud ? 'Online only' : 'Private, works offline';
@@ -120,6 +140,8 @@
     const token = ++modelsToken;
     $('llm-key-label').textContent = p.keyLabel;
     $('llm-key').placeholder = p.placeholder;
+    $('llm-key-link').hidden = s.provider === 'custom';
+    if (baseUrlInput) baseUrlInput.value = s.customBaseUrl || '';
     llmKey.setHas(s.has[p.keyName]);
 
     const sel = $('model');
@@ -128,7 +150,7 @@
     sel.innerHTML = '<option>Loading models…</option>';
     let models = [];
     if (s.provider === 'anthropic') models = s.models.map((m) => ({ id: m.id, name: m.label, note: m.note }));
-    if (s.has[p.keyName]) {
+    if (s.has[p.keyName] || s.provider === 'custom') {
       const res = await api.invoke('models:list', s.provider);
       if (token !== modelsToken) return;
       if (res.ok) {
@@ -137,7 +159,7 @@
         $('model-note').textContent = res.message;
       }
     }
-    if (!models.some((m) => m.id === saved)) models.unshift({ id: saved, name: saved });
+    if (saved && !models.some((m) => m.id === saved)) models.unshift({ id: saved, name: saved });
     sel.innerHTML = '';
     for (const m of models) {
       const o = document.createElement('option');
@@ -145,10 +167,17 @@
       o.textContent = m.name === m.id ? m.id : `${m.name}`;
       sel.append(o);
     }
-    sel.value = saved;
+    if (saved) sel.value = saved;
+    else if (models.length) {
+      sel.value = models[0].id;
+      await update({ [p.modelSetting]: models[0].id });
+    }
     sel.disabled = false;
-    const note = models.find((m) => m.id === saved);
-    $('model-note').textContent = note && note.note ? note.note : s.has[p.keyName] ? saved : `Add your ${p.label} key to load its models.`;
+    const note = models.find((m) => m.id === (sel.value || saved));
+    const defaultHint = s.provider === 'custom'
+      ? (models.length ? `${models.length} models available` : 'Connect to endpoint to fetch models')
+      : `Add your ${p.label} key to load its models.`;
+    $('model-note').textContent = note && note.note ? note.note : (s.has[p.keyName] || s.provider === 'custom') ? (sel.value || saved || defaultHint) : defaultHint;
     renderActive();
   }
   $('model').addEventListener('change', async () => {
@@ -193,6 +222,134 @@
   });
   $('rate').value = s.speechRate;
   $('rate').addEventListener('change', () => update({ speechRate: Number($('rate').value) }));
+
+  // Speech recognition (Whisper model picker)
+  const whisperContainer = $('whisper-models');
+  const whisperStatus = $('whisper-status');
+  const whisperMsg = $('whisper-msg');
+  let whisperActiveModel = s.whisperModel || 'small.en';
+  let downloadingWhisperId = null;
+
+  async function renderWhisperModels() {
+    if (!whisperContainer) return;
+    const res = await api.invoke('speech:models');
+    if (!res || !res.models) return;
+    whisperActiveModel = res.active || whisperActiveModel;
+
+    if (whisperStatus) {
+      const isReady = res.state === 'ready';
+      whisperStatus.className = `status ${isReady ? 'ok' : res.state === 'loading' ? 'busy' : ''}`;
+      whisperStatus.querySelector('.text').textContent = isReady ? 'Ready' : res.state === 'loading' ? 'Loading…' : res.state;
+    }
+
+    whisperContainer.innerHTML = '';
+    for (const m of res.models) {
+      const card = document.createElement('div');
+      const isSelected = m.id === whisperActiveModel;
+      const isDownloading = downloadingWhisperId === m.id || m.downloading;
+      card.className = `whisper-card${isSelected ? ' selected' : ''}`;
+      card.tabIndex = 0;
+      card.setAttribute('role', 'radio');
+      card.setAttribute('aria-checked', String(isSelected));
+      card.dataset.id = m.id;
+
+      const sizeMB = `${Math.round(m.size / (1024 * 1024))} MB`;
+
+      const info = document.createElement('div');
+      info.className = 'model-info';
+
+      const title = document.createElement('div');
+      title.className = 'model-title';
+      const name = document.createElement('span');
+      name.className = 'model-name';
+      name.textContent = m.label;
+      const badge = document.createElement('span');
+      badge.className = 'model-badge';
+      badge.textContent = sizeMB;
+      title.append(name, badge);
+
+      const note = document.createElement('div');
+      note.className = 'model-note';
+      note.textContent = m.note || '';
+      info.append(title, note);
+
+      const action = document.createElement('div');
+      action.className = 'model-action';
+      if (isDownloading) {
+        const pct = m.progress != null ? `${m.progress}%` : '…';
+        action.innerHTML = `<span class="caption" style="color:var(--text-1)">Downloading ${pct}</span>`;
+      } else if (isSelected) {
+        action.innerHTML = `<span class="badge" style="color:#34d399; background:rgba(52,211,153,0.15)">Active</span>`;
+      } else if (m.installed) {
+        const btn = document.createElement('button');
+        btn.className = 'btn secondary small';
+        btn.type = 'button';
+        btn.textContent = 'Use';
+        action.append(btn);
+      } else {
+        const btn = document.createElement('button');
+        btn.className = 'btn secondary small';
+        btn.type = 'button';
+        btn.textContent = 'Download';
+        action.append(btn);
+      }
+
+      card.append(info, action);
+
+      const selectOrDownload = async () => {
+        if (downloadingWhisperId) return;
+        if (isSelected && m.installed) return;
+        if (whisperMsg) whisperMsg.textContent = m.installed ? `Switching to ${m.label}…` : `Downloading ${m.label} (${sizeMB})…`;
+        if (!m.installed) {
+          downloadingWhisperId = m.id;
+          renderWhisperModels();
+        }
+        try {
+          const r = await api.invoke('speech:pick-model', m.id);
+          if (r && r.ok) {
+            whisperActiveModel = m.id;
+            s.whisperModel = m.id;
+            if (whisperMsg) whisperMsg.textContent = `Using ${m.label}. Ready for voice commands.`;
+          } else {
+            if (whisperMsg) whisperMsg.textContent = (r && r.message) || 'Failed to switch model.';
+          }
+        } catch (err) {
+          if (whisperMsg) whisperMsg.textContent = err.message || 'Error updating speech model.';
+        } finally {
+          downloadingWhisperId = null;
+          renderWhisperModels();
+        }
+      };
+
+      card.addEventListener('click', () => selectOrDownload());
+      card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectOrDownload(); }
+      });
+
+      whisperContainer.append(card);
+    }
+  }
+
+  api.on('speech:progress', (data) => {
+    if (!data) return;
+    downloadingWhisperId = data.id;
+    if (whisperMsg) whisperMsg.textContent = `Downloading speech model (${data.percent}%)…`;
+    const card = whisperContainer && whisperContainer.querySelector(`.whisper-card[data-id="${data.id}"]`);
+    if (card) {
+      const act = card.querySelector('.model-action');
+      if (act) act.innerHTML = `<span class="caption" style="color:var(--text-1)">${data.percent}%</span>`;
+    }
+  });
+
+  api.on('speech:state', (st) => {
+    if (whisperStatus && st) {
+      const isReady = st.state === 'ready';
+      whisperStatus.className = `status ${isReady ? 'ok' : st.state === 'loading' ? 'busy' : ''}`;
+      whisperStatus.querySelector('.text').textContent = isReady ? 'Ready' : st.state === 'loading' ? 'Loading…' : st.state;
+    }
+  });
+
+  renderWhisperModels();
 
   // Microphone
 
